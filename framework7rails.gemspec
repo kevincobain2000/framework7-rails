@@ -8,9 +8,9 @@ Gem::Specification.new do |spec|
   spec.version       = Framework7rails::VERSION
   spec.authors       = ["Pulkit Kathuria"]
   spec.email         = ["kevincobain2000@gmail.com"]
-  spec.summary       = %q{http://www.idangero.us/framework7/}
+  spec.summary       = %q{https://github.com/kevincobain2000/framework7rails}
   spec.description   = %q{Gem for Framework7 which is a Full Featured HTML Framework For Building iOS Apps}
-  spec.homepage      = "http://www.idangero.us/framework7/"
+  spec.homepage      = "https://github.com/kevincobain2000/framework7rails"
   spec.license       = "MIT"
 
   spec.files         = `git ls-files`.split($/)
