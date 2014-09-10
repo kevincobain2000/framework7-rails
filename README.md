@@ -58,6 +58,24 @@ $(document).ready(function() {
 ```
 
 
+application.html.erb
+
+```
+<!DOCTYPE html>
+<html>
+<head>
+
+  <title>Framework7railsDemo</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, minimal-ui">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <%= stylesheet_link_tag    'application', media: 'all', 'data-turbolinks-track' => true %>
+    <%= javascript_include_tag 'application', 'data-turbolinks-track' => true %>
+  <%= csrf_meta_tags %>
+</head>
+```
+
 ## Contributing
 
 1. Fork it ( https://github.com/[my-github-username]/framework7rails/fork )
