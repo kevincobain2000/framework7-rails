@@ -23,7 +23,7 @@ Or install it yourself as:
 
 ## Integrating framework7rails with rails
 
-Demo App: heroku
+Demo App: http://framework7rails-demo.herokuapp.com/
 
 GemFile
 
