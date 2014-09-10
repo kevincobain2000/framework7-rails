@@ -49,6 +49,14 @@ application.css
 *= require framework7
 ```
 
+
+config/environments/production.rb
+
+```
+config.serve_static_assets = true
+config.assets.compile = true
+```
+
 app/assets/javascripts/myapp.js
 
 ```
