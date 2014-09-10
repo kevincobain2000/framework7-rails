@@ -1,5 +1,8 @@
 require "framework7rails/version"
 
 module Framework7rails
-  # Your code goes here...
+  module Rails
+    class Engine < ::Rails::Engine
+    end
+  end
 end
