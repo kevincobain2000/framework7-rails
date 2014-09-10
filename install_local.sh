@@ -1,3 +1,2 @@
 #!/bin/bash
-
-git add .;gem build letterfx.gemspec ;gem install letterfx;
+git add .;gem build framework7rails.gemspec ;gem install framework7rails;
