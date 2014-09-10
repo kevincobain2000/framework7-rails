@@ -23,6 +23,40 @@ Or install it yourself as:
 
 ## Integrating framework7rails with rails
 
+Demo App: heroku
+
+GemFile
+
+```ruby
+gem 'framework7rails'
+```
+
+application.js
+
+```
+//= require framework7
+```
+
+application.css
+
+```
+*= require framework7
+```
+
+app/assets/javascripts/myapp.js
+
+```
+$(document).ready(function() {
+    var $$ = Dom7;
+    var myApp = new Framework7();   
+    var myApp = new Framework7({
+        pushState: true,
+        swipePanel: 'left',
+        // ... other parameters
+    });
+});
+```
+
 
 ## Contributing
 
