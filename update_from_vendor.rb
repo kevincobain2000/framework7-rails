@@ -1,5 +1,10 @@
 #!/usr/bin/env ruby
-VERSION_FRAMEWORK7 = "0.9.5"
+
+if ARGV[0]
+	VERSION_FRAMEWORK7 = ARGV[0]
+else 
+	VERSION_FRAMEWORK7 = "0.9.5"
+end
 
 puts "Updating Framework Version #{VERSION_FRAMEWORK7}"
 puts "Downloading v#{VERSION_FRAMEWORK7} release framework7 github repo into tmp_vendor"
