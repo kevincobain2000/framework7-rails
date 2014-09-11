@@ -29,12 +29,6 @@ GemFile
 
 ```ruby
 gem 'framework7rails'
-
-# For heroku
-group :production do
-  gem 'rails_log_stdout',           github: 'heroku/rails_log_stdout'
-  gem 'rails3_serve_static_assets', github: 'heroku/rails3_serve_static_assets'
-end
 ```
 
 application.js
@@ -47,17 +41,10 @@ application.css
 
 ```
 *= require framework7
+* require framework7.themes #if you want themes
 ```
 
-
-config/environments/production.rb
-
-```
-config.serve_static_assets = true
-config.assets.compile = true
-```
-
-app/assets/javascripts/myapp.js
+app/assets/javascripts/myapp.js //or whatever name
 
 ```
 $(document).ready(function() {
@@ -89,6 +76,15 @@ application.html.erb
   <%= csrf_meta_tags %>
 </head>
 ```
+
+## Updating From Vendor
+
+```
+## https://github.com/nolimits4web/Framework7/releases
+./update_from_vendor.rb 0.9.5
+./install_local.sh
+```
+
 
 ## Contributing
 
