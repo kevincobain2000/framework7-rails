@@ -1,3 +1,4 @@
 module Framework7rails
-  VERSION = "1.9.6"
+  # framework7 version 0.9.6
+  VERSION = "2.9.6"
 end
