@@ -1,4 +1,12 @@
-# WIP
+Although there exists a gem for f7 already, but I found it complicated and it was really out of date. I try to keep it updated from https://github.com/nolimits4web/Framework7/releases but you can also do it yourself by running ``./update_from_vendor``
+
+## Updating From Vendor
+
+```
+## https://github.com/nolimits4web/Framework7/releases
+./update_from_vendor.rb 0.9.X (without the v)
+./install_local.sh
+```
 
 # Framework7rails
 
@@ -7,7 +15,13 @@ See http://www.idangero.us/framework7/
 
 ## Installation
 
-Add this line to your application's Gemfile:
+    $ gem install framework7rails
+
+## Integrating framework7rails with rails
+
+Demo App running on this gem: http://framework7rails-demo.herokuapp.com/welcome
+
+GemFile
 
 ```ruby
 gem 'framework7rails'
@@ -16,20 +30,6 @@ gem 'framework7rails'
 And then execute:
 
     $ bundle
-
-Or install it yourself as:
-
-    $ gem install framework7rails
-
-## Integrating framework7rails with rails
-
-Demo App: http://framework7rails-demo.herokuapp.com/welcome
-
-GemFile
-
-```ruby
-gem 'framework7rails'
-```
 
 application.js
 
@@ -44,12 +44,13 @@ application.css
 * require framework7.themes #if you want themes
 ```
 
-app/assets/javascripts/myapp.js //or whatever name
+app/assets/javascripts/myapp.js //or whatever myapp_name.js
 
 ```
 $(document).ready(function() {
-    var $$ = Dom7;
-    var myApp = new Framework7();   
+    var $$ = Dom7; // from here on you will use 2 dollar signs $$(".class-select").text("whatever manipulation")
+
+    var myApp = new Framework7();
     var myApp = new Framework7({
         pushState: true,
         swipePanel: 'left',
@@ -57,7 +58,6 @@ $(document).ready(function() {
     });
 });
 ```
-
 
 application.html.erb
 
@@ -77,19 +77,30 @@ application.html.erb
 </head>
 ```
 
-## Updating From Vendor
+Submitting Forms with ajax
 
 ```
-## https://github.com/nolimits4web/Framework7/releases
-./update_from_vendor.rb 0.9.5
-./install_local.sh
+## routes.rb
+  resources :phone do
+    collection do
+      post :list_suggestion
+    end
+  end
+
+## In your whatever erb, you can use form_tag() too
+<form action="/phone/list_suggestion" method="POST" class="ajax-submit">
+  <input type="text" name="request_list" placeholder="Type your list suggestion here...">
+</form>
+
+## phone_controller.rb
+def list_suggestion
+  logger.info "Debug #{params.inspect}"
+end
 ```
 
+Linking Between Pages
 
-## Contributing
+// TODO
+```
 
-1. Fork it ( https://github.com/[my-github-username]/framework7rails/fork )
-2. Create your feature branch (`git checkout -b my-new-feature`)
-3. Commit your changes (`git commit -am 'Add some feature'`)
-4. Push to the branch (`git push origin my-new-feature`)
-5. Create a new Pull Request
+```
