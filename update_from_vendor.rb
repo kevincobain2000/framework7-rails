@@ -3,15 +3,17 @@
 if ARGV[0]
 	VERSION_FRAMEWORK7 = ARGV[0]
 else 
-	VERSION_FRAMEWORK7 = "0.9.5"
+	VERSION_FRAMEWORK7 = "0.9.6"
 end
 
 puts "Updating Framework Version #{VERSION_FRAMEWORK7}"
-puts "Downloading v#{VERSION_FRAMEWORK7} release framework7 github repo into tmp_vendor"
+puts "Downloading v#{VERSION_FRAMEWORK7} release framework7 release from https://github.com/nolimits4web/Framework7/archive/v#{VERSION_FRAMEWORK7}.tar.gz"
 puts "\n\n\n"
 
 system("wget https://github.com/nolimits4web/Framework7/archive/v#{VERSION_FRAMEWORK7}.tar.gz")
-system("tar -zxf v#{VERSION_FRAMEWORK7}.tar.gz")
+
+system("tar -zxfv v#{VERSION_FRAMEWORK7}.tar.gz")
+puts "cleaning up downloaded tar"
 system("rm v#{VERSION_FRAMEWORK7}.tar.gz")
 
 puts "Copying js files"
