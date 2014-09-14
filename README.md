@@ -48,14 +48,19 @@ app/assets/javascripts/myapp.js //or whatever myapp_name.js
 
 ```
 $(document).ready(function() {
-    var $$ = Dom7; // from here on you will use 2 dollar signs $$(".class-select").text("whatever manipulation")
+  var $$ = Dom7;
+  window.F7H = {
+    app: new Framework7(),
+    dom: Framework7.$
+  };
 
-    var myApp = new Framework7();
-    var myApp = new Framework7({
-        pushState: true,
-        swipePanel: 'left',
-        // ... other parameters
-    });
+  window.Phone = {
+    Views: {}
+  };
+
+  Phone.Views.Main = F7H.app.addView('.view-main', {
+    dynamicNavbar: true
+  });
 });
 ```
 
