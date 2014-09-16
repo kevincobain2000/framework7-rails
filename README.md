@@ -1,12 +1,6 @@
+## (Work In Progress) 
+
 Although there exists a gem for f7 already, but I found it complicated and it was really out of date. I try to keep it updated from https://github.com/nolimits4web/Framework7/releases but you can also do it yourself by running ``./update_from_vendor``
-
-## Updating From Vendor
-
-```
-## https://github.com/nolimits4web/Framework7/releases
-./update_from_vendor.rb 0.9.X (without the v)
-./install_local.sh
-```
 
 # Framework7rails
 
@@ -15,7 +9,8 @@ See http://www.idangero.us/framework7/
 
 ## Installation
 
-    $ gem install framework7rails
+    $ gem install framework7rails #latest version haven't published yet
+    $ gem install git@github.com:kevincobain2000/framework7rails.git -b 0.9.6
 
 ## Integrating framework7rails with rails
 
@@ -24,7 +19,8 @@ Demo App running on this gem: http://framework7rails-demo.herokuapp.com/welcome
 GemFile
 
 ```ruby
-gem 'framework7rails'
+gem 'framework7rails', :git => 'https://github.com/kevincobain2000/framework7rails', :branch => 'master' #latest version
+gem 'framework7rails', :git => 'https://github.com/kevincobain2000/framework7rails', :branch => '0.9.6' #specify version
 ```
 
 And then execute:
@@ -108,4 +104,13 @@ Linking Between Pages
 // TODO
 ```
 
+```
+
+
+## Updating From Vendor
+
+```
+## https://github.com/nolimits4web/Framework7/releases
+./update_from_vendor.rb 0.9.X (without the v)
+./install_local.sh
 ```
