@@ -1,4 +1,4 @@
-## (Work In Progress) 
+## Current Version (0.9.7)
 
 Although there exists a gem for f7 already, but I found it complicated and it was really out of date. I try to keep it updated from https://github.com/nolimits4web/Framework7/releases but you can also do it yourself by running ``./update_from_vendor``
 
@@ -9,8 +9,8 @@ See http://www.idangero.us/framework7/
 
 ## Installation
 
-    $ gem install framework7rails #latest version haven't published yet
-    $ gem install git@github.com:kevincobain2000/framework7rails.git -b 0.9.6
+    $ gem install framework7rails
+    $ gem install git@github.com:kevincobain2000/framework7rails.git
 
 ## Integrating framework7rails with rails
 
@@ -97,13 +97,6 @@ Submitting Forms with ajax
 def list_suggestion
   logger.info "Debug #{params.inspect}"
 end
-```
-
-Linking Between Pages
-
-// TODO
-```
-
 ```
 
 
