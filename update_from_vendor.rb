@@ -1,9 +1,9 @@
 #!/usr/bin/env ruby
 
 if ARGV[0]
-	VERSION_FRAMEWORK7 = ARGV[0]
+  VERSION_FRAMEWORK7 = ARGV[0]
 else 
-	VERSION_FRAMEWORK7 = "0.9.6"
+  VERSION_FRAMEWORK7 = "0.9.7"
 end
 
 puts "Updating Framework Version #{VERSION_FRAMEWORK7}"
