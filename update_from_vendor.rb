@@ -17,6 +17,7 @@ system("tar -zxf v#{VERSION_FRAMEWORK7}.tar.gz")
 puts "Copying js files"
 
 system("cp Framework7-#{VERSION_FRAMEWORK7}/dist/js/framework7.js vendor/assets/javascripts/")
+system("cp Framework7-#{VERSION_FRAMEWORK7}/dist/js/framework7.js.map vendor/assets/javascripts/")
 
 
 puts "Copying css files"
