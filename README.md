@@ -20,7 +20,6 @@ GemFile
 
 ```ruby
 gem 'framework7rails', :git => 'https://github.com/kevincobain2000/framework7rails', :branch => 'master' #latest version
-gem 'framework7rails', :git => 'https://github.com/kevincobain2000/framework7rails', :branch => '0.9.6' #specify version
 ```
 
 And then execute:
