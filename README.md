@@ -1,4 +1,4 @@
-## Current Version (0.9.7)
+## Current Version (0.9.8)
 
 Although there exists a gem for f7 already, but I found it complicated and it was really out of date. I try to keep it updated from https://github.com/nolimits4web/Framework7/releases but you can also do it yourself by running ``./update_from_vendor``
 
