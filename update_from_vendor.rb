@@ -3,7 +3,7 @@
 if ARGV[0]
   VERSION_FRAMEWORK7 = ARGV[0]
 else 
-  VERSION_FRAMEWORK7 = "0.9.7"
+  VERSION_FRAMEWORK7 = "0.9.8"
 end
 
 puts "Updating Framework Version #{VERSION_FRAMEWORK7}"
