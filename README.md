@@ -14,8 +14,6 @@ See http://www.idangero.us/framework7/
 
 ## Integrating framework7rails with rails
 
-Demo App running on this gem: http://framework7rails-demo.herokuapp.com/welcome
-
 GemFile
 
 ```ruby
@@ -26,18 +24,30 @@ And then execute:
 
     $ bundle
 
-application.js
+**application.js**
 
 ```
 //= require framework7
 ```
 
-application.css
+**application.css**
 
 ```
 *= require framework7
 * require framework7.themes #if you want themes
 ```
+
+## Updating From Vendor
+
+```
+## https://github.com/nolimits4web/Framework7/releases
+./update_from_vendor.rb 0.9.X (without the v)
+./install_local.sh
+```
+
+----
+
+**Following might be outdated**
 
 app/assets/javascripts/myapp.js //or whatever myapp_name.js
 
@@ -96,13 +106,4 @@ Submitting Forms with ajax
 def list_suggestion
   logger.info "Debug #{params.inspect}"
 end
-```
-
-
-## Updating From Vendor
-
-```
-## https://github.com/nolimits4web/Framework7/releases
-./update_from_vendor.rb 0.9.X (without the v)
-./install_local.sh
 ```
