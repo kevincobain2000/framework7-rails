@@ -1,23 +1,20 @@
-## Current Version (1.0.2)
+### Current Version (1.0.2)
 
-Although there exists a gem for f7 already, but I found it complicated and it was really out of date. I try to keep it updated from https://github.com/nolimits4web/Framework7/releases but you can also do it yourself by running ``./update_from_vendor``
+### Framework7-rails
 
-# Framework7rails
-
-Gem for Framework7 which is a Full Featured HTML Framework For Building iOS Apps
 See http://www.idangero.us/framework7/
 
-## Installation
+### Installation
 
     $ gem install framework7rails
-    $ gem install git@github.com:kevincobain2000/framework7rails.git
+    $ gem install git@github.com:kevincobain2000/framework7-rails.git
 
-## Integrating framework7rails with rails
+### Integrating framework7rails with rails
 
 GemFile
 
 ```ruby
-gem 'framework7rails', :git => 'https://github.com/kevincobain2000/framework7rails', :branch => 'master' #latest version
+gem 'framework7rails', :git => 'https://github.com/kevincobain2000/framework7-rails', :branch => 'master' #latest version
 ```
 
 And then execute:
