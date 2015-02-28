@@ -16,13 +16,13 @@ system("tar -zxf v#{VERSION_FRAMEWORK7}.tar.gz")
 
 puts "Copying js files"
 
-system("cp Framework7-#{VERSION_FRAMEWORK7}/dist/js/framework7.js vendor/assets/javascripts/")
-system("cp Framework7-#{VERSION_FRAMEWORK7}/dist/js/framework7.js.map vendor/assets/javascripts/")
+system("cp Framework7-#{VERSION_FRAMEWORK7}/dist/js/* vendor/assets/javascripts/")
+system("cp Framework7-#{VERSION_FRAMEWORK7}/dist/js/* vendor/assets/javascripts/")
 
 
 puts "Copying css files"
-system("cp Framework7-#{VERSION_FRAMEWORK7}/dist/css/framework7.css vendor/assets/stylesheets/")
-system("cp Framework7-#{VERSION_FRAMEWORK7}/dist/css/framework7.themes.css vendor/assets/stylesheets/")
+system("cp Framework7-#{VERSION_FRAMEWORK7}/dist/css/* vendor/assets/stylesheets/")
+system("cp Framework7-#{VERSION_FRAMEWORK7}/dist/css/* vendor/assets/stylesheets/")
 
 puts "Copying images"
 
