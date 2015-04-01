@@ -1,5 +1,5 @@
 /**
- * Framework7 1.0.2
+ * Framework7 1.0.5
  * Full Featured Mobile HTML Framework For Building iOS Apps
  * 
  * http://www.idangero.us/framework7
@@ -10,7 +10,7 @@
  * 
  * Licensed under MIT
  * 
- * Released on: February 22, 2015
+ * Released on: March 28, 2015
  */
 (function () {
 
@@ -24,7 +24,7 @@
         var app = this;
     
         // Version
-        app.version = '1.0.2';
+        app.version = '1.0.5';
     
         // Default Parameters
         app.params = {
@@ -47,6 +47,10 @@
             fastClicks: true,
             fastClicksDistanceThreshold: 0,
             fastClicksDelayBetweenClicks: 50,
+            // Tap Hold
+            tapHold: false,
+            tapHoldDelay: 750,
+            tapHoldPreventClicks: true,
             // Active State
             activeState: true,
             activeStateElements: 'a, button, label, span',
@@ -202,6 +206,9 @@
             var container = $(selector);
             view.container = container[0];
         
+            // Is main
+            view.main = container.hasClass(app.params.viewMainClass);
+        
             // Content cache
             view.contentCache = {};
         
@@ -239,7 +246,7 @@
             var viewURL = docLocation;
             var pushStateSeparator = app.params.pushStateSeparator;
             var pushStateRoot = app.params.pushStateRoot;
-            if (app.params.pushState) {
+            if (app.params.pushState && view.main) {
                 if (pushStateRoot) {
                     viewURL = pushStateRoot;
                 }
@@ -281,9 +288,6 @@
             if (view.url) {
                 view.history.push(view.url);
             }
-        
-            // Is main
-            view.main = container.hasClass(app.params.viewMainClass);
         
             // Touch events
             var isTouched = false,
@@ -373,6 +377,11 @@
                             activeNavBackIcon = activeNavbar.find('.left.sliding .back .icon');
                             previousNavBackIcon = previousNavbar.find('.left.sliding .back .icon');
                         }
+                    }
+        
+                    // Close/Hide Any Picker
+                    if ($('.picker-modal.modal-in').length > 0) {
+                        app.closeModal($('.picker-modal.modal-in'));
                     }
                 }
                 e.f7PreventPanelSwipe = true;
@@ -518,8 +527,8 @@
                     view.url = url;
         
                     // Page before animation callback
-                    app.pageBackCallbacks('before', view, {pageContainer: activePage[0], url: url, position: 'center', newPage: previousPage, oldPage: activePage, swipeBack: true});
-                    app.pageAnimCallbacks('before', view, {pageContainer: previousPage[0], url: url, position: 'left', newPage: previousPage, oldPage: activePage, swipeBack: true});
+                    app.pageBackCallback('before', view, {pageContainer: activePage[0], url: url, position: 'center', newPage: previousPage, oldPage: activePage, swipeBack: true});
+                    app.pageAnimCallback('before', view, {pageContainer: previousPage[0], url: url, position: 'left', newPage: previousPage, oldPage: activePage, swipeBack: true});
                 }
         
                 activePage.transitionEnd(function () {
@@ -533,10 +542,10 @@
                     allowViewTouchMove = true;
                     view.allowPageChange = true;
                     if (pageChanged) {
-                        if (app.params.pushState) history.back();
+                        if (app.params.pushState && view.main) history.back();
                         // Page after animation callback
-                        app.pageBackCallbacks('after', view, {pageContainer: activePage[0], url: url, position: 'center', newPage: previousPage, oldPage: activePage, swipeBack: true});
-                        app.pageAnimCallbacks('after', view, {pageContainer: previousPage[0], url: url, position: 'left', newPage: previousPage, oldPage: activePage, swipeBack: true});
+                        app.pageBackCallback('after', view, {pageContainer: activePage[0], url: url, position: 'center', newPage: previousPage, oldPage: activePage, swipeBack: true});
+                        app.pageAnimCallback('after', view, {pageContainer: previousPage[0], url: url, position: 'left', newPage: previousPage, oldPage: activePage, swipeBack: true});
                         app.router.afterBack(view, activePage, previousPage);
                     }
                     if (pageShadow && pageShadow.length > 0) pageShadow.remove();
@@ -698,35 +707,118 @@
             return new View(selector, params);
         };
         
+        app.getCurrentView = function (index) {
+            var popoverView = $('.popover.modal-in .view');
+            var popupView = $('.popup.modal-in .view');
+            var panelView = $('.panel.active .view');
+            var appViews = $('.views');
+            // Find active view as tab
+            var appView = appViews.children('.view');
+            // Propably in tabs or split view
+            if (appView.length > 1) {
+                if (appView.hasClass('tab')) {
+                    // Tabs
+                    appView = appViews.children('.view.active');
+                }
+                else {
+                    // Split View, leave appView intact
+                }
+            }
+            if (popoverView.length > 0 && popoverView[0].f7View) return popoverView[0].f7View;
+            if (popupView.length > 0 && popupView[0].f7View) return popupView[0].f7View;
+            if (panelView.length > 0 && panelView[0].f7View) return panelView[0].f7View;
+            if (appView.length > 0) {
+                if (appView.length === 1 && appView[0].f7View) return appView[0].f7View;
+                if (appView.length > 1) {
+                    var currentViews = [];
+                    for (var i = 0; i < appView.length; i++) {
+                        if (appView[i].f7View) currentViews.push(appView[i].f7View);
+                    }
+                    if (currentViews.length > 0 && typeof index !== 'undefined') return currentViews[index];
+                    if (currentViews.length > 1) return currentViews;
+                    if (currentViews.length === 1) return currentViews[0];
+                    return undefined;
+                }
+            }
+            return undefined;
+        };
+        
 
         /*======================================================
         ************   Navbars && Toolbars   ************
         ======================================================*/
         // On Navbar Init Callback
-        app.navbarInitCallback = function (view, pageContainer, navbar, navbarInnerContainer, url, position) {
-            var _navbar = {
-                container: navbar,
+        app.navbarInitCallback = function (view, pageContainer, navbarContainer, navbarInnerContainer) {
+            if (!navbarContainer && navbarInnerContainer) navbarContainer = $(navbarInnerContainer).parent('.navbar')[0];
+            var navbarData = {
+                container: navbarContainer,
                 innerContainer: navbarInnerContainer
             };
-            var _page = {
-                url: url,
-                query: $.parseUrlQuery(url || ''),
-                container: pageContainer,
-                name: $(pageContainer).attr('data-page'),
-                view: view,
-                from: position
-            };
+            var pageData = pageContainer && pageContainer.f7PageData;
+        
             var eventData = {
-                navbar: _navbar,
-                page: _page
+                page: pageData,
+                navbar: navbarData
             };
         
-            // Plugin hook
-            app.pluginHook('navbarInit', _navbar, _page);
-            
-            // Navbar Init Callback
+            if (navbarInnerContainer.f7NavbarInitialized) {
+                // Reinit Navbar
+                app.reinitNavbar(navbarContainer, navbarInnerContainer);
+        
+                // Plugin hook
+                app.pluginHook('navbarReinit', pageData);
+        
+                // Event
+                $(pageData.container).trigger('navbarReinit', eventData);
+                return;
+            }
+            navbarInnerContainer.f7NavbarInitialized = true;
+        
+            // Before Init
+            app.pluginHook('navbarBeforeInit', navbarData, pageData);
+            $(navbarInnerContainer).trigger('navbarBeforeInit', eventData);
+        
+            // Initialize Navbar
+            app.initNavbar(navbarContainer, navbarInnerContainer);
+        
+            // On init
+            app.pluginHook('navbarInit', navbarData, pageData);
             $(navbarInnerContainer).trigger('navbarInit', eventData);
         };
+        // Navbar Remove Callback
+        app.navbarRemoveCallback = function (view, pageContainer, navbarContainer, navbarInnerContainer) {
+            if (!navbarContainer && navbarInnerContainer) navbarContainer = $(navbarInnerContainer).parent('.navbar')[0];
+            var navbarData = {
+                container: navbarContainer,
+                innerContainer: navbarInnerContainer
+            };
+            var pageData = pageContainer.f7PageData;
+        
+            var eventData = {
+                page: pageData,
+                navbar: navbarData
+            };
+            app.pluginHook('navbarBeforeRemove', navbarData, pageData);
+            $(navbarInnerContainer).trigger('navbarBeforeRemove', eventData);
+        };
+        app.initNavbar = function (navbarContainer, navbarInnerContainer) {
+            // Init Subnavbar Searchbar
+            app.initSearchbar(navbarInnerContainer);
+        };
+        app.reinitNavbar = function (navbarContainer, navbarInnerContainer) {
+            // Re init navbar methods
+        };
+        app.initNavbarWithCallback = function (navbarContainer) {
+            navbarContainer = $(navbarContainer);
+            var viewContainer = navbarContainer.parents('.' + app.params.viewClass);
+            if (viewContainer.length === 0) return;
+            var view = viewContainer[0].f7View || undefined;
+            navbarContainer.find('.navbar-inner').each(function () {
+                app.navbarInitCallback(view, undefined, navbarContainer[0], this);
+            });
+        };
+        
+        // Size Navbars
         app.sizeNavbars = function (viewContainer) {
             var navbarInner = viewContainer ? $(viewContainer).find('.navbar .navbar-inner:not(.cached)') : $('.navbar .navbar-inner:not(.cached)');
             navbarInner.each(function () {
@@ -809,6 +901,8 @@
                 
             });
         };
+        
+        // Hide/Show Navbars/Toolbars
         app.hideNavbar = function (navbarContainer) {
             $(navbarContainer).addClass('navbar-hidden');
             return true;
@@ -835,140 +929,182 @@
         /*======================================================
         ************   Searchbar   ************
         ======================================================*/
-        app.initSearchbar = function (pageContainer) {
-            pageContainer = $(pageContainer);
-            var searchbar = pageContainer.hasClass('searchbar') ? pageContainer : pageContainer.find('.searchbar');
-            if (searchbar.length === 0) return;
-            if (!pageContainer.hasClass('page')) pageContainer = searchbar.parents('.page').eq(0);
-            var searchbarOverlay = pageContainer.hasClass('page') ? pageContainer.find('.searchbar-overlay') : $('.searchbar-overlay');
-            var input = searchbar.find('input[type="search"]');
-            var clear = searchbar.find('.searchbar-clear');
-            var cancel = searchbar.find('.searchbar-cancel');
-            var searchList = $(searchbar.attr('data-search-list'));
-            var isVirtualList = searchList.hasClass('virtual-list');
-            var virtualList;
-            var searchIn = searchbar.attr('data-search-in');
-            var searchBy = searchbar.attr('data-search-by');
-            var found = searchbar.attr('data-searchbar-found');
-            if (!found) {
-                found = pageContainer.find('.searchbar-found');
-                if (found.length === 0) found = $('.searchbar-found');
+        var Searchbar = function (container, params) {
+            var defaults = {
+                input: null,
+                clearButton: null,
+                cancelButton: null,
+                searchList: null,
+                searchIn: '.item-title',
+                searchBy: '',
+                found: null,
+                notFound: null,
+                overlay: null,
+                ignore: '.searchbar-ignore',
+                customSearch: false
+            };
+            params = params || {};
+            for (var def in defaults) {
+                if (typeof params[def] === 'undefined' || params[def] === null) {
+                    params[def] = defaults[def];
+                }
+            }
+            
+            // Instance
+            var s = this;
+        
+            // Params
+            s.params = params;
+        
+            // Container
+            container = $(container);
+            s.container = container;
+        
+            // Active
+            s.active = false;
+        
+            // Input
+            s.input = s.params.input ? $(s.params.input) : s.container.find('input[type="search"]');
+            s.clearButton = s.params.clearButton ? $(s.params.clearButton) : s.container.find('.searchbar-clear');
+            s.cancelButton = s.params.cancelButton ? $(s.params.cancelButton) : s.container.find('.searchbar-cancel');
+        
+            // Search List
+            s.searchList = $(s.params.searchList);
+            s.ul = s.searchList.children('ul');
+        
+            // Is Virtual List
+            s.isVirtualList = s.searchList.hasClass('virtual-list');
+        
+            // Is In Page
+            s.pageContainer = s.container.parents('.page').eq(0);
+        
+            // Overlay
+            if (!s.params.overlay) {
+                s.overlay = s.pageContainer.length > 0 ? s.pageContainer.find('.searchbar-overlay') : $('.searchbar-overlay');
             }
             else {
-                found = $(found);
+                s.overlay = $(s.params.overlay);
             }
-            var notFound = searchbar.attr('data-searchbar-not-found');
-            if (!notFound) {
-                notFound = pageContainer.find('.searchbar-not-found');
-                if (notFound.length === 0) notFound = $('.searchbar-not-found');
+            // Found and not found
+            if (!s.params.found) {
+                s.found = s.pageContainer.length > 0 ? s.pageContainer.find('.searchbar-found') : $('.searchbar-found');
             }
             else {
-                notFound = $(notFound);
+                s.found = $(s.params.found);
+            }
+            if (!s.params.notFound) {
+                s.notFound = s.pageContainer.length > 0 ? s.pageContainer.find('.searchbar-not-found') : $('.searchbar-not-found');
+            }
+            else {
+                s.notFound = $(s.params.notFound);
             }
         
             // Cancel button
             var cancelMarginProp = app.rtl ? 'margin-left' : 'margin-right';
-            if (cancel.length > 0) {
-                cancel.show();
-                cancel.css(cancelMarginProp, -cancel[0].offsetWidth + 'px');
-            }
-                
-        
-            // Handlers
-            function disableSearchbar() {
-                input.val('').trigger('change');
-                searchbar.removeClass('searchbar-active searchbar-not-empty');
-                if (cancel.length > 0) cancel.css(cancelMarginProp, -cancel[0].offsetWidth + 'px');
-                
-                if (searchList) searchbarOverlay.removeClass('searchbar-overlay-active');
-                if (app.device.ios) {
-                    setTimeout(function () {
-                        input.blur();
-                        searchList.trigger('disableSearch');
-                    }, 400);
-                }
-                else {
-                    input.blur();
-                    searchList.trigger('disableSearch');
-                }
-            }
-        
-            // Activate
-            function enableSearchbar() {
-                if (app.device.ios) {
-                    setTimeout(function () {
-                        if (searchList && !searchbar.hasClass('searchbar-active')) searchbarOverlay.addClass('searchbar-overlay-active');
-                        searchbar.addClass('searchbar-active');
-                        if (cancel.length > 0) cancel.css(cancelMarginProp, '0px');
-                        searchList.trigger('enableSearch');
-        
-                    }, 400);
-                }
-                else {
-                    if (searchList && !searchbar.hasClass('searchbar-active')) searchbarOverlay.addClass('searchbar-overlay-active');
-                    searchbar.addClass('searchbar-active');
-                    if (cancel.length > 0) cancel.css(cancelMarginProp, '0px');
-                    searchList.trigger('enableSearch');
-                }
-            }
-        
-            // Clear
-            function clearSearchbar() {
-                input.val('').trigger('change').focus();
-                searchList.trigger('clearSearch');
-            }
-        
-            // Change
-            function searchValue() {
+            if (s.cancelButton.length > 0) {
+                s.cancelButton.transition(0).show();
+                s.cancelButton.css(cancelMarginProp, -s.cancelButton[0].offsetWidth + 'px');
                 setTimeout(function () {
-                    var value = input.val().trim();
-                    if (value.length === 0) {
-                        searchbar.removeClass('searchbar-not-empty');
-                        if (searchList && searchbar.hasClass('searchbar-active')) searchbarOverlay.addClass('searchbar-overlay-active');
-                    }
-                    else {
-                        searchbar.addClass('searchbar-not-empty');
-                        if (searchList && searchbar.hasClass('searchbar-active')) searchbarOverlay.removeClass('searchbar-overlay-active');
-                    }
-                    if (searchList.length > 0 && (searchIn || isVirtualList)) search(value);
+                    s.cancelButton.transition('');    
                 }, 0);
             }
         
-            //Prevent submit
-            function preventSubmit(e) {
-                e.preventDefault();
-            }
+            s.triggerEvent = function (eventName, eventData) {
+                s.container.trigger(eventName, eventData);
+                if (s.searchList.length > 0) s.searchList.trigger(eventName, eventData);
+            };
         
-            function attachEvents(destroy) {
-                var method = destroy ? 'off' : 'on';
-                searchbar[method]('submit', preventSubmit);
-                cancel[method]('click', disableSearchbar);
-                searchbarOverlay[method]('click', disableSearchbar);
-                input[method]('focus', enableSearchbar);
-                input[method]('change keydown keypress keyup', searchValue);
-                clear[method]('click', clearSearchbar);
-            }
-            function detachEvents() {
-                attachEvents(true);
-            }
-            searchbar[0].f7DestroySearchbar = detachEvents;
+            // Enable/disalbe
+            s.enable = function () {
+                function _enable() {
+                    if (s.searchList.length && !s.container.hasClass('searchbar-active')) s.overlay.addClass('searchbar-overlay-active');
+                    s.container.addClass('searchbar-active');
+                    if (s.cancelButton.length > 0) s.cancelButton.css(cancelMarginProp, '0px');
+                    s.triggerEvent('enableSearch');
+                    s.active = true;
+                }
+                if (app.device.ios) {
+                    setTimeout(function () {
+                        _enable();
+                    }, 400);
+                }
+                else {
+                    _enable();
+                }
+            };
         
-            // Attach events
-            attachEvents();
+            s.disable = function () {
+                s.input.val('').trigger('change');
+                s.container.removeClass('searchbar-active searchbar-not-empty');
+                if (s.cancelButton.length > 0) s.cancelButton.css(cancelMarginProp, -s.cancelButton[0].offsetWidth + 'px');
+                
+                if (s.searchList.length) s.overlay.removeClass('searchbar-overlay-active');
+                function _disable() {
+                    s.input.blur();
+                    s.triggerEvent('disableSearch');
+                    s.active = false;
+                }
+                if (app.device.ios) {
+                    setTimeout(function () {
+                        _disable();
+                    }, 400);
+                }
+                else {
+                    _disable();
+                }
+            };
+        
+            // Clear
+            s.clear = function () {
+                s.input.val('').trigger('change').focus();
+                s.triggerEvent('clearSearch');
+            };
         
             // Search
+            s.handleInput = function () {
+                setTimeout(function () {
+                    var value = s.input.val().trim();
+                    if (s.searchList.length > 0 && (s.params.searchIn || s.isVirtualList)) s.search(value, true);
+                }, 0);
+            };
+        
             var previousQuery;
-            function search(query) {
+            var virtualList;
+            s.search = function (query, internal) {
                 if (query.trim() === previousQuery) return;
                 previousQuery = query.trim();
+        
+                if (!internal) {
+                    if (!s.active) {
+                        s.enable();
+                    }
+                    if (!internal) {
+                        s.input.val(query);
+                    }
+                }
+                // Add active/inactive classes on overlay
+                if (query.length === 0) {
+                    s.container.removeClass('searchbar-not-empty');
+                    if (s.searchList.length && s.container.hasClass('searchbar-active')) s.overlay.addClass('searchbar-overlay-active');
+                }
+                else {
+                    s.container.addClass('searchbar-not-empty');
+                    if (s.searchList.length && s.container.hasClass('searchbar-active')) s.overlay.removeClass('searchbar-overlay-active');
+                }
+        
+                if (s.params.externalSearch) {
+                    s.triggerEvent('search', {query: query});
+                    return;
+                }
+        
                 var values = query.trim().toLowerCase().split(' ');
                 var foundItems = [];
-                if (isVirtualList) {
-                    virtualList = searchList[0].f7VirtualList;
+                if (s.isVirtualList) {
+                    virtualList = s.searchList[0].f7VirtualList;
                     if (query.trim() === '') {
                         virtualList.resetFilter();
-                        notFound.hide();
-                        found.show();
+                        s.notFound.hide();
+                        s.found.show();
                         return;
                     }
                     if (virtualList.params.searchAll) {
@@ -983,18 +1119,21 @@
                     }
                 }
                 else {
-                    searchIn = searchbar.attr('data-search-in');
-                    searchList.find('li').removeClass('hidden-by-searchbar').each(function (index, el) {
+                    if (s.ul.length === 0) {
+                        s.ul = s.searchList.children('ul');
+                    }
+                    s.ul.children('li').removeClass('hidden-by-searchbar').each(function (index, el) {
                         el = $(el);
-                        var compareWithEl = el.find(searchIn);
-                        if (compareWithEl.length === 0) return;
-                        var compareWith;
-                        compareWith = compareWithEl.text().trim().toLowerCase();
+                        var compareWithText = [];
+                        el.find(s.params.searchIn).each(function () {
+                            compareWithText.push($(this).text().trim().toLowerCase());
+                        });
+                        compareWithText = compareWithText.join(' ');
                         var wordsMatch = 0;
                         for (var i = 0; i < values.length; i++) {
-                            if (compareWith.indexOf(values[i]) >= 0) wordsMatch++;
+                            if (compareWithText.indexOf(values[i]) >= 0) wordsMatch++;
                         }
-                        if (wordsMatch !== values.length) {
+                        if (wordsMatch !== values.length && !(s.params.ignore && el.is(s.params.ignore))) {
                             el.addClass('hidden-by-searchbar');
                         }
                         else {
@@ -1003,7 +1142,7 @@
                     });
         
                     if (app.params.searchbarHideDividers) {
-                        searchList.find('.item-divider, .list-group-title').each(function () {
+                        s.searchList.find('.item-divider, .list-group-title').each(function () {
                             var title = $(this);
                             var nextElements = title.nextAll('li');
                             var hide = true;
@@ -1014,15 +1153,17 @@
                                     hide = false;
                                 }
                             }
-                            if (hide) title.addClass('hidden-by-searchbar');
+                            var ignore = s.params.ignore && title.is(s.params.ignore);
+                            if (hide && !ignore) title.addClass('hidden-by-searchbar');
                             else title.removeClass('hidden-by-searchbar');
                         });
                     }
                     if (app.params.searchbarHideGroups) {
-                        searchList.find('.list-group').each(function () {
+                        s.searchList.find('.list-group').each(function () {
                             var group = $(this);
+                            var ignore = s.params.ignore && group.is(s.params.ignore);
                             var notHidden = group.find('li:not(.hidden-by-searchbar)');
-                            if (notHidden.length === 0) {
+                            if (notHidden.length === 0 && !ignore) {
                                 group.addClass('hidden-by-searchbar');
                             }
                             else {
@@ -1031,125 +1172,212 @@
                         });
                     }
                 }
-                searchList.trigger('search', {query: query, foundItems: foundItems});
+                s.triggerEvent('search', {query: query, foundItems: foundItems});
                 if (foundItems.length === 0) {
-                    notFound.show();
-                    found.hide();
+                    s.notFound.show();
+                    s.found.hide();
                 }
                 else {
-                    notFound.hide();
-                    found.show();
+                    s.notFound.hide();
+                    s.found.show();
                 }
-                if (isVirtualList) {
+                if (s.isVirtualList) {
                     virtualList.filterItems(foundItems);
                 }
-            }
+            };
         
-            // Destroy on page remove
-            function pageBeforeRemove() {
-                detachEvents();
-                pageContainer.off('pageBeforeRemove', pageBeforeRemove);
-            }
-            if (pageContainer.hasClass('page')) {
-                pageContainer.on('pageBeforeRemove', pageBeforeRemove);
-            }
-                
-        };
-        app.destroySearchbar = function (pageContainer) {
-            pageContainer = $(pageContainer);
-            var searchbar = pageContainer.hasClass('searchbar') ? pageContainer : pageContainer.find('.searchbar');
-            if (searchbar.length === 0) return;
-            if (searchbar[0].f7DestroySearchbar) searchbar[0].f7DestroySearchbar();
-        };
-        
-
-        /*======================================================
-        ************   Messagebar   ************
-        ======================================================*/
-        app.initMessagebar = function (pageContainer) {
-            pageContainer = $(pageContainer);
-            var messagebar = pageContainer.hasClass('messagebar') ? pageContainer : pageContainer.find('.messagebar');
-            if (messagebar.length === 0) return;
-            var textarea = messagebar.find('textarea');
-            var pageContent = messagebar.parents('.page').find('.page-content');
-            var pageContentInitialPadding = parseInt(pageContent.css('padding-bottom'));
-            var initialBarHeight = messagebar[0].offsetHeight;
-            var initialAreaHeight = textarea[0].offsetHeight;
-        
-            //Prevent submit
+            // Events
             function preventSubmit(e) {
                 e.preventDefault();
             }
         
+            s.attachEvents = function (destroy) {
+                var method = destroy ? 'off' : 'on';
+                s.container[method]('submit', preventSubmit);
+                s.cancelButton[method]('click', s.disable);
+                s.overlay[method]('click', s.disable);
+                s.input[method]('focus', s.enable);
+                s.input[method]('change keydown keypress keyup', s.handleInput);
+                s.clearButton[method]('click', s.clear);
+            };
+            s.detachEvents = function() {
+                s.attachEvents(true);
+            };
+        
+            // Init Destroy
+            s.init = function () {
+                s.attachEvents();
+            };
+            s.destroy = function () {
+                s.detachEvents();
+                s = null;
+            };
+        
+            // Init
+            s.init();
+        
+            s.container[0].f7Searchbar = s;
+            return s;
+        
+        };
+        app.searchbar = function (container, params) {
+            return new Searchbar(container, params);
+        };
+        app.initSearchbar = function (container) {
+            container = $(container);
+            var searchbar = container.hasClass('searchbar') ? container : container.find('.searchbar');
+            if (searchbar.length === 0) return;
+            if (!searchbar.hasClass('searchbar-init')) return;
+        
+            var sb = app.searchbar(searchbar, searchbar.dataset());
+        
+            function onBeforeRemove() {
+                sb.destroy();
+            }
+            if (container.hasClass('page')) {
+                container.once('pageBeforeRemove', onBeforeRemove);   
+            }
+            else if (container.hasClass('navbar-inner')) {
+                container.once('navbarBeforeRemove', onBeforeRemove);
+            }
+        };
+
+        /*======================================================
+        ************   Messagebar   ************
+        ======================================================*/
+        var Messagebar = function (container, params) {
+            var defaults = {
+                textarea: null,
+                maxHeight: null,
+            };
+            params = params || {};
+            for (var def in defaults) {
+                if (typeof params[def] === 'undefined' || params[def] === null) {
+                    params[def] = defaults[def];
+                }
+            }
+            
+            // Instance
+            var m = this;
+        
+            // Params
+            m.params = params;
+        
+            // Container
+            m.container = $(container);
+            if (m.container.length === 0) return;
+        
+            // Textarea
+            m.textarea = m.params.textarea ? $(m.params.textarea) : m.container.find('textarea');
+        
+            // Is In Page
+            m.pageContainer = m.container.parents('.page').eq(0);
+            m.pageContent = m.pageContainer.find('.page-content');
+        
+            // Initial Sizes
+            m.pageContentPadding = parseInt(m.pageContent.css('padding-bottom'));
+            m.initialBarHeight = m.container[0].offsetHeight;
+            m.initialAreaHeight = m.textarea[0].offsetHeight;
+            
+        
             // Resize textarea
-            function sizeTextarea() {
+            m.sizeTextarea = function () {
                 // Reset
-                textarea.css({'height': ''});
+                m.textarea.css({'height': ''});
                 
-                var height = textarea[0].offsetHeight;
-                var diff = height - textarea[0].clientHeight;
-                var scrollHeight = textarea[0].scrollHeight;
-                var addExtra = parseInt((messagebar.attr('data-keyboard-height') || 0), 10);
+                var height = m.textarea[0].offsetHeight;
+                var diff = height - m.textarea[0].clientHeight;
+                var scrollHeight = m.textarea[0].scrollHeight;
+        
                 // Update
                 if (scrollHeight + diff > height) {
                     var newAreaHeight = scrollHeight + diff;
-                    var newBarHeight = initialBarHeight + (newAreaHeight - initialAreaHeight);
-                    var maxBarHeight = messagebar.attr('data-max-height') || messagebar.parents('.view')[0].offsetHeight - 88;
+                    var newBarHeight = m.initialBarHeight + (newAreaHeight - m.initialAreaHeight);
+                    var maxBarHeight = m.params.maxHeight || m.container.parents('.view')[0].offsetHeight - 88;
                     if (newBarHeight > maxBarHeight) {
                         newBarHeight = parseInt(maxBarHeight, 10);
-                        newAreaHeight = newBarHeight - initialBarHeight + initialAreaHeight;
+                        newAreaHeight = newBarHeight - m.initialBarHeight + m.initialAreaHeight;
                     }
-                    textarea.css('height', newAreaHeight + 'px');
-                    messagebar.css('height', newBarHeight + 'px');
-                    if (pageContent.length > 0) {
-                        pageContent.css('padding-bottom', newBarHeight + addExtra + 'px');
-                        pageContent.scrollTop(pageContent[0].scrollHeight - pageContent[0].offsetHeight);
+                    m.textarea.css('height', newAreaHeight + 'px');
+                    m.container.css('height', newBarHeight + 'px');
+                    if (m.pageContent.length > 0) {
+                        m.pageContent.css('padding-bottom', newBarHeight + 'px');
+                        m.pageContent.scrollTop(m.pageContent[0].scrollHeight - m.pageContent[0].offsetHeight);
                     }
                 }
                 else {
-                    if (pageContent.length > 0) {
-                        messagebar.css({'height': ''});
-                        pageContent.css({'padding-bottom': addExtra ? pageContentInitialPadding + addExtra + 'px' : ''});
+                    if (m.pageContent.length > 0) {
+                        m.container.css({'height': '', 'bottom': ''});
+                        m.pageContent.css({'padding-bottom': ''});
                     }
                 }
-            }
-            var to;
-            function handleKey(e) {
-                clearTimeout(to);
-                to = setTimeout(function () {
-                    sizeTextarea();
-                }, 0);
-                    
-            }
-        
-            function attachEvents(destroy) {
-                var method = destroy ? 'off' : 'on';
-                messagebar[method]('submit', preventSubmit);
-                textarea[method]('change keydown keypress keyup paste cut', handleKey);
-            }
-            function detachEvents() {
-                attachEvents(true);
-            }
+            };
             
-            messagebar[0].f7DestroyMessagebar = detachEvents;
+            // Clear
+            m.clear = function () {
+                m.textarea.val('').trigger('change');
+            };
+            m.value = function (value) {
+                if (typeof value === 'undefined') return m.textarea.val();
+                else m.textarea.val(value).trigger('change');  
+            };
+            
+            // Handle textarea
+            m.textareaTimeout = undefined;
+            m.handleTextarea = function (e) {
+                clearTimeout(m.textareaTimeout);
+                m.textareaTimeout = setTimeout(function () {
+                    m.sizeTextarea();
+                }, 0);
+            };
         
-            // Attach events
-            attachEvents();
+            //Events
+            function preventSubmit(e) {
+                e.preventDefault();
+            }
+        
+            m.attachEvents = function (destroy) {
+                var method = destroy ? 'off' : 'on';
+                m.container[method]('submit', preventSubmit);
+                m.textarea[method]('change keydown keypress keyup paste cut', m.handleTextarea);
+            };
+            m.detachEvents = function () {
+                m.attachEvents(true);
+            };
+            
+            // Init Destroy
+            m.init = function () {
+                m.attachEvents();
+            };
+            m.destroy = function () {
+                m.detachEvents();
+                m = null;
+            };
+        
+            // Init
+            m.init();
+        
+            m.container[0].f7Messagebar = m;
+            return m;
+        };
+        app.messagebar = function (container, params) {
+            return new Messagebar(container, params);
+        };
+        app.initPageMessagebar = function (pageContainer) {
+            pageContainer = $(pageContainer);
+            var messagebar = pageContainer.hasClass('messagebar') ? pageContainer : pageContainer.find('.messagebar');
+            if (messagebar.length === 0) return;
+            if (!messagebar.hasClass('messagebar-init')) return;
+            var mb = app.messagebar(messagebar, messagebar.dataset());
         
             // Destroy on page remove
             function pageBeforeRemove() {
-                detachEvents();
+                mb.destroy();
                 pageContainer.off('pageBeforeRemove', pageBeforeRemove);
             }
             if (pageContainer.hasClass('page')) {
                 pageContainer.on('pageBeforeRemove', pageBeforeRemove);
             }
-        };
-        app.destroyMessagebar = function (pageContainer) {
-            pageContainer = $(pageContainer);
-            var messagebar = pageContainer.hasClass('messagebar') ? pageContainer : pageContainer.find('.messagebar');
-            if (messagebar.length === 0) return;
-            if (messagebar[0].f7DestroyMessagebar) messagebar[0].f7DestroyMessagebar();
         };
 
         /*======================================================
@@ -1192,7 +1420,7 @@
                 method: 'GET',
                 beforeSend: app.params.onAjaxStart,
                 complete: function (xhr) {
-                    if (xhr.status === 200 || xhr.status === 0) {
+                    if ((xhr.status >= 200 && xhr.status < 300) || xhr.status === 0) {
                         if (app.params.cache && !ignoreCache) {
                             app.removeFromCache(_url);
                             app.cache.push({
@@ -1310,6 +1538,9 @@
                 navbarInnerContainer: params.navbarInnerContainer,
                 fromPage: params.fromPage
             };
+            if (params.fromPage && !params.fromPage.navbarInnerContainer && params.oldNavbarInnerContainer) {
+                params.fromPage.navbarInnerContainer = params.oldNavbarInnerContainer;
+            }
         
             if (pageContainer.f7PageInitialized && view.params.domCache) {
                 // Reinit Page
@@ -1365,7 +1596,7 @@
             app.triggerPageCallbacks('beforeRemove', pageData.name, pageData);
             $(pageData.container).trigger('pageBeforeRemove', {page: pageData});
         };
-        app.pageBackCallbacks = function (callback, view, params) {
+        app.pageBackCallback = function (callback, view, params) {
             // Page Data
             var pageContainer = params.pageContainer;
             var pageContext;
@@ -1397,7 +1628,7 @@
                 $(pageData.container).trigger('pageBack', {page: pageData});
             }
         };
-        app.pageAnimCallbacks = function (callback, view, params) {
+        app.pageAnimCallback = function (callback, view, params) {
             var pageContainer = params.pageContainer;
             var pageContext;
             if (pageContainer.f7PageData) pageContext = pageContainer.f7PageData.context;
@@ -1476,14 +1707,13 @@
             // Size navbars on page load
             if (app.sizeNavbars) app.sizeNavbars(pageContainer.parents('.' + app.params.viewClass)[0]);
             // Init messages
-            if (app.initMessages) app.initMessages(pageContainer);
+            if (app.initPageMessages) app.initPageMessages(pageContainer);
             // Init forms storage
             if (app.initFormsStorage) app.initFormsStorage(pageContainer);
             // Init smart select
             if (app.initSmartSelects) app.initSmartSelects(pageContainer);
             // Init slider
-            if (app.initSlider) app.initSlider(pageContainer);
-            if (app.initSwiper) app.initSwiper(pageContainer);
+            if (app.initPageSwiper) app.initPageSwiper(pageContainer);
             // Init pull to refres
             if (app.initPullToRefresh) app.initPullToRefresh(pageContainer);
             // Init infinite scroll
@@ -1491,7 +1721,7 @@
             // Init searchbar
             if (app.initSearchbar) app.initSearchbar(pageContainer);
             // Init message bar
-            if (app.initMessagebar) app.initMessagebar(pageContainer);
+            if (app.initPageMessagebar) app.initPageMessagebar(pageContainer);
             // Init scroll toolbars
             if (app.initScrollToolbars) app.initScrollToolbars(pageContainer);
             // Init scroll toolbars
@@ -1502,8 +1732,7 @@
             // Size navbars on page reinit
             if (app.sizeNavbars) app.sizeNavbars(pageContainer.parents('.' + app.params.viewClass)[0]);
             // Reinit slider
-            if (app.reinitSlider) app.reinitSlider(pageContainer);
-            if (app.reinitSwiper) app.reinitSwiper(pageContainer);
+            if (app.reinitPageSwiper) app.reinitPageSwiper(pageContainer);
             // Reinit lazy load
             if (app.reinitLazyLoad) app.reinitLazyLoad(pageContainer);
         };
@@ -1511,10 +1740,10 @@
             pageContainer = $(pageContainer);
             var viewContainer = pageContainer.parents('.' + app.params.viewClass);
             if (viewContainer.length === 0) return;
-            var view = viewContainer[0].f7View || false;
-            var url = view && view.url ? view.url : false;
-            if (viewContainer) {
-                viewContainer.attr('data-page', pageContainer.attr('data-page') || undefined);
+            var view = viewContainer[0].f7View || undefined;
+            var url = view && view.url ? view.url : undefined;
+            if (viewContainer && pageContainer.attr('data-page')) {
+                viewContainer.attr('data-page', pageContainer.attr('data-page'));
             }
             app.pageInitCallback(view, {pageContainer: pageContainer[0], url: url, position: 'center'});
         };
@@ -1641,20 +1870,37 @@
                 }
             },
         
-            preprocess: function(content, url, next) {
+            preprocess: function(view, content, url, next) {
                 // Plugin hook
-                app.pluginHook('routerPreprocess', content, url, next);
+                app.pluginHook('routerPreprocess', view, content, url, next);
                 
                 // Preprocess by plugin
                 content = app.pluginProcess('preprocess', content);
         
-                if (app.params.preprocess) {
-                    content = app.params.preprocess(content, url, next);
+                if (view && view.params && view.params.preprocess) {
+                    content = view.params.preprocess(content, url, next);
+                    console.log(content);
                     if (typeof content !== 'undefined') {
                         next(content);
                     }
-                } else {
+                } 
+                else if (app.params.preprocess) {
+                    content = app.params.preprocess(content, url, next);
+                    if (typeof content !== 'undefined') {
+                        next(content);
+                    }  
+                }
+                else {
                     next(content);
+                }
+            },
+            preroute: function(view, options) {
+                app.pluginHook('routerPreroute', view, options);
+                if ((app.params.preroute && app.params.preroute(view, options) === false) || (view && view.params.preroute && view.params.preroute(view, options) === false)) {
+                    return true;
+                }
+                else {
+                    return false;
                 }
             },
         
@@ -1851,14 +2097,18 @@
                 
                     if (oldNavbarInner.length > 0) {
                         for (i = 0; i < oldNavbarInner.length - 1; i++) {
-                            if (!view.params.domCache)
+                            if (!view.params.domCache) {
+                                app.navbarRemoveCallback(view, pagesInView[i], navbar[0], oldNavbarInner[i]);
                                 $(oldNavbarInner[i]).remove();
+                            }
                             else
                                 $(oldNavbarInner[i]).addClass('cached');
                         }
                         if (!newNavbarInner && oldNavbarInner.length === 1) {
-                            if (!view.params.domCache)
+                            if (!view.params.domCache) {
+                                app.navbarRemoveCallback(view, pagesInView[0], navbar[0], oldNavbarInner[0]);
                                 $(oldNavbarInner[0]).remove();
+                            }
                             else
                                 $(oldNavbarInner[0]).addClass('cached');
                         }
@@ -1958,6 +2208,7 @@
                 }
                 else {
                     app.pageRemoveCallback(view, oldPage[0], reloadPosition);
+                    if (dynamicNavbar) app.navbarRemoveCallback(view, oldPage[0], navbar[0], oldNavbarInner[0]);
                     oldPage.remove();
                     if (dynamicNavbar) oldNavbarInner.remove();
                 }
@@ -1968,7 +2219,8 @@
                 pageContainer: newPage[0], 
                 url: url, 
                 position: options.reload ? reloadPosition : 'right', 
-                navbarInnerContainer: dynamicNavbar ? newNavbarInner[0] : undefined, 
+                navbarInnerContainer: dynamicNavbar ? newNavbarInner && newNavbarInner[0] : undefined, 
+                oldNavbarInnerContainer: dynamicNavbar ? oldNavbarInner && oldNavbarInner[0] : undefined,
                 context: t7_rendered.context,
                 query: options.query,
                 fromPage: oldPage && oldPage.length && oldPage[0].f7PageData
@@ -1992,7 +2244,7 @@
             var clientLeft = newPage[0].clientLeft;
         
             // Before Anim Callback
-            app.pageAnimCallbacks('before', view, {
+            app.pageAnimCallback('before', view, {
                 pageContainer: newPage[0], 
                 url: url, 
                 position: 'right', 
@@ -2004,13 +2256,13 @@
         
             function afterAnimation() {
                 view.allowPageChange = true;
-                newPage.removeClass('page-from-right-to-center page-on-right').addClass('page-on-center');
-                oldPage.removeClass('page-from-center-to-left page-on-center').addClass('page-on-left');
+                newPage.removeClass('page-from-right-to-center page-on-right page-on-left').addClass('page-on-center');
+                oldPage.removeClass('page-from-center-to-left page-on-center page-on-right').addClass('page-on-left');
                 if (dynamicNavbar) {
                     newNavbarInner.removeClass('navbar-from-right-to-center navbar-on-left navbar-on-right').addClass('navbar-on-center');
-                    oldNavbarInner.removeClass('navbar-from-center-to-left navbar-on-center').addClass('navbar-on-left');
+                    oldNavbarInner.removeClass('navbar-from-center-to-left navbar-on-center navbar-on-right').addClass('navbar-on-left');
                 }
-                app.pageAnimCallbacks('after', view, {
+                app.pageAnimCallback('after', view, {
                     pageContainer: newPage[0], 
                     url: url, 
                     position: 'right', 
@@ -2019,7 +2271,7 @@
                     query: options.query,
                     fromPage: oldPage && oldPage.length && oldPage[0].f7PageData
                 });
-                if (app.params.pushState) app.pushStateClearQueue();
+                if (app.params.pushState && view.main) app.pushStateClearQueue();
                 if (!(view.params.swipeBackPage || view.params.preloadPreviousPage)) {
                     if (view.params.domCache) {
                         oldPage.addClass('cached');
@@ -2028,6 +2280,7 @@
                     else {
                         if (!(url.indexOf('#') === 0 && newPage.attr('data-page').indexOf('smart-select-') === 0)) {
                             app.pageRemoveCallback(view, oldPage[0], 'left');
+                            if (dynamicNavbar) app.navbarRemoveCallback(view, oldPage[0], navbar[0], oldNavbarInner[0]);
                             oldPage.remove();
                             if (dynamicNavbar) oldNavbarInner.remove();    
                         }
@@ -2052,13 +2305,16 @@
                 });
             }
             else {
-                newNavbarInner.find('.sliding, .sliding .back .icon').transform('');
+                if (dynamicNavbar) newNavbarInner.find('.sliding, .sliding .back .icon').transform('');
                 afterAnimation();
             }
         
         };
         
         app.router.load = function (view, options) {
+            if (app.router.preroute(view, options)) {
+                return false;
+            }
             options = options || {};
             var url = options.url;
             var content = options.content;
@@ -2080,7 +2336,7 @@
                 app.xhr = false;
             }
             function proceed(content) {
-                app.router.preprocess(content, url, function (content) {
+                app.router.preprocess(view, content, url, function (content) {
                     options.content = content;
                     app.router._load(view, options);
                 });
@@ -2138,7 +2394,7 @@
             }
         
             // Push state
-            if (app.params.pushState)  {
+            if (app.params.pushState && view.main)  {
                 if (typeof pushState === 'undefined') pushState = true;
                 if (!preloadOnly && history.state && pushState) {
                     history.back();
@@ -2147,14 +2403,14 @@
         
             // Animation
             function afterAnimation() {
-                app.pageBackCallbacks('after', view, {
+                app.pageBackCallback('after', view, {
                     pageContainer: oldPage[0], 
                     url: url, 
                     position: 'center', 
                     oldPage: oldPage, 
                     newPage: newPage, 
                 });
-                app.pageAnimCallbacks('after', view, {
+                app.pageAnimCallback('after', view, {
                     pageContainer: newPage[0], 
                     url: url, 
                     position: 'left', 
@@ -2167,14 +2423,14 @@
             }
             function animateBack() {
                 // Page before animation callback
-                app.pageBackCallbacks('before', view, {
+                app.pageBackCallback('before', view, {
                     pageContainer: oldPage[0], 
                     url: url, 
                     position: 'center', 
                     oldPage: oldPage, 
                     newPage: newPage, 
                 });
-                app.pageAnimCallbacks('before', view, {
+                app.pageAnimCallback('before', view, {
                     pageContainer: newPage[0], 
                     url: url, 
                     position: 'left', 
@@ -2200,7 +2456,7 @@
                     });
                 }
                 else {
-                    newNavbarInner.find('.sliding, .sliding .back .icon').transform('');
+                    if (dynamicNavbar) newNavbarInner.find('.sliding, .sliding .back .icon').transform('');
                     afterAnimation();
                 }
             }
@@ -2316,6 +2572,7 @@
                     url: url, 
                     position: 'left', 
                     navbarInnerContainer: dynamicNavbar ? newNavbarInner[0] : undefined, 
+                    oldNavbarInnerContainer: dynamicNavbar ? oldNavbarInner && oldNavbarInner[0] : undefined,
                     context: t7_rendered.context,
                     query: options.query,
                     fromPage: oldPage && oldPage.length && oldPage[0].f7PageData,
@@ -2436,6 +2693,9 @@
             
         };
         app.router.back = function (view, options) {
+            if (app.router.preroute(view, options)) {
+                return false;
+            }
             options = options || {};
             var url = options.url;
             var content = options.content;
@@ -2456,7 +2716,7 @@
             var pagesInView = $(view.pagesContainer).find('.page:not(.cached)');
             
             function proceed(content) {
-                app.router.preprocess(content, url, function (content) {
+                app.router.preprocess(view, content, url, function (content) {
                     options.content = content;
                     app.router._back(view, options);
                 });
@@ -2548,6 +2808,7 @@
                     oldNavbar.removeClass('navbar-from-center-to-right').addClass('cached');
                 }
                 else {
+                    app.navbarRemoveCallback(view, oldPage[0], undefined, oldNavbar[0]);
                     oldNavbar.remove();
                 }
                 newNavbar = $(inners[0]).removeClass('navbar-on-left navbar-from-left-to-center').addClass('navbar-on-center');
@@ -2572,7 +2833,7 @@
                 delete view.contentCache[previousURL];
             }
             
-            if (app.params.pushState) app.pushStateClearQueue();
+            if (app.params.pushState && view.main) app.pushStateClearQueue();
         
             // Preload previous page
             if (view.params.preloadPreviousPage) {
@@ -2796,7 +3057,7 @@
             }
             var modalHTML;
             if (toPopover) {
-                var actionsPopoverTemplate = 
+                var actionsToPopoverTemplate = app.params.modalActionsToPopoverTemplate || 
                     '<div class="popover actions-popover">' +
                       '<div class="popover-inner">' +
                         '{{#each this}}' +
@@ -2806,7 +3067,7 @@
                             '{{#if label}}' +
                             '<li class="actions-popover-label {{#if color}}color-{{color}}{{/if}} {{#if bold}}actions-popover-bold{{/if}}">{{text}}</li>' +
                             '{{else}}' +
-                            '<li><a href="#" class="item-link list-button {{#if color}}color-{{color}}{{/if}} {{#if bg}}bg-{{bg}}{{/if}} {{#if bold}}actions-popover-bold{{/if}}">{{text}}</a></li>' +
+                            '<li><a href="#" class="item-link list-button {{#if color}}color-{{color}}{{/if}} {{#if bg}}bg-{{bg}}{{/if}} {{#if bold}}actions-popover-bold{{/if}} {{#if disabled}}disabled{{/if}}">{{text}}</a></li>' +
                             '{{/if}}' +
                             '{{/each}}' +
                           '</ul>' +
@@ -2814,10 +3075,10 @@
                         '{{/each}}' +
                       '</div>' +
                     '</div>';
-                if (!app._compiledTemplates.actionsPopover) {
-                    app._compiledTemplates.actionsPopover = t7.compile(actionsPopoverTemplate);
+                if (!app._compiledTemplates.actionsToPopover) {
+                    app._compiledTemplates.actionsToPopover = t7.compile(actionsToPopoverTemplate);
                 }
-                var popoverHTML = app._compiledTemplates.actionsPopover(params);
+                var popoverHTML = app._compiledTemplates.actionsToPopover(params);
                 modal = $(app.popover(popoverHTML, target, true));
                 groupSelector = '.list-block ul';
                 buttonSelector = '.list-button';
@@ -2837,6 +3098,7 @@
                             if (button.bold) buttonClass += ' actions-modal-button-bold';
                             if (button.color) buttonClass += ' color-' + button.color;
                             if (button.bg) buttonClass += ' bg-' + button.bg;
+                            if (button.disabled) buttonClass += ' disabled';
                             buttonsHTML += '<span class="' + buttonClass + '">' + button.text + '</span>';
                             if (j === params[i].length - 1) buttonsHTML += '</div>';
                         }
@@ -3516,14 +3778,11 @@
                     }
                 }
         
-                if (!app.params.imagesLazyLoadSequential) {
-                    onLoad();
-                    return;
-                }
-        
-                if (imageIsLoading) {
-                    if (imagesSequence.indexOf(el[0]) < 0) imagesSequence.push(el[0]);
-                    return;
+                if (app.params.imagesLazyLoadSequential) {
+                    if (imageIsLoading) {
+                        if (imagesSequence.indexOf(el[0]) < 0) imagesSequence.push(el[0]);
+                        return;
+                    }
                 }
         
                 // Loading flag
@@ -3599,106 +3858,202 @@
         /*======================================================
         ************   Messages   ************
         ======================================================*/
-        app.initMessages = function (pageContainer) {
-            var page = $(pageContainer);
-            var messages = page.find('.messages');
+        var Messages = function (container, params) {
+            var defaults = {
+                autoLayout: true,
+                newMessagesFirst: false,
+                messageTemplate: 
+                    '{{#if day}}' +
+                    '<div class="messages-date">{{day}} {{#if time}}, <span>{{time}}</span>{{/if}}</div>' +
+                    '{{/if}}' +
+                    '<div class="message message-{{type}} {{#if hasImage}}message-pic{{/if}} {{#if avatar}}message-with-avatar{{/if}} {{#if position}}message-appear-from-{{position}}{{/if}}">' +
+                        '{{#if name}}<div class="message-name">{{name}}</div>{{/if}}' +
+                        '<div class="message-text">{{text}}</div>' +
+                        '{{#if avatar}}<div class="message-avatar" style="background-image:url({{avatar}})"></div>{{/if}}' +
+                        '{{#if label}}<div class="message-label">{{label}}</div>{{/if}}' +
+                    '</div>'
+            };
+            params = params || {};
+            for (var def in defaults) {
+                if (typeof params[def] === 'undefined' || params[def] === null) {
+                    params[def] = defaults[def];
+                }
+            }
+        
+            // Instance
+            var m = this;
+        
+            // Params
+            m.params = params;
+        
+            // Container
+            m.container = $(container);
+            if (m.container.length === 0) return;
+        
+            // Autolayout
+            if (m.params.autoLayout) m.container.addClass('messages-auto-layout');
+        
+            // Is In Page
+            m.pageContainer = m.container.parents('.page').eq(0);
+            m.pageContent = m.pageContainer.find('.page-content');
+        
+            // Compiled template
+            m.template = Template7.compile(m.params.messageTemplate);
+        
+            // Auto Layout
+            m.layout = function () {
+                if (!m.container.hasClass('messages-auto-layout')) m.container.addClass('messages-auto-layout');
+                m.container.find('.message').each(function () {
+                    var message = $(this);
+                    if (message.find('.message-text img').length > 0) message.addClass('message-pic');
+                    if (message.find('.message-avatar').length > 0) message.addClass('message-with-avatar');
+                });
+                m.container.find('.message').each(function () {
+                    var message = $(this);
+                    var isSent = message.hasClass('message-sent');
+                    var next = message.next('.message-' + (isSent ? 'sent' : 'received'));
+                    var prev = message.prev('.message-' + (isSent ? 'sent' : 'received'));
+                    if (next.length === 0) {
+                        message.addClass('message-last message-with-tail');
+                    }
+                    else message.removeClass('message-last message-with-tail');
+        
+                    if (prev.length === 0) {
+                        message.addClass('message-first');
+                    }
+                    else message.removeClass('message-first');
+        
+                    if (prev.length > 0 && prev.find('.message-name').length > 0 && message.find('.message-name').length > 0) {
+                        if (prev.find('.message-name').text() !== message.find('.message-name').text()) {
+                            prev.addClass('message-last message-with-tail');
+                            message.addClass('message-first');
+                        }
+                    }
+                });
+                
+            };
+        
+            // Add Message
+            m.appendMessage = function (props, animate) {
+                return m.addMessage(props, 'append', animate);
+            };
+            m.prependMessage = function (props, animate) {
+                return m.addMessage(props, 'prepend', animate);
+            };
+            m.addMessage = function (props, method, animate) {
+                return m.addMessages([props], method, animate);
+            };
+            m.addMessages = function (newMessages, method, animate) {
+                if (typeof animate === 'undefined') {
+                    animate = true;
+                }
+                if (typeof method === 'undefined') {
+                    method = m.params.newMessagesFirst ? 'prepend' : 'append';
+                }
+                var newMessagesHTML = '', i;
+                for (i = 0; i < newMessages.length; i++) {
+                    var props = newMessages[i] || {};
+                    props.type = props.type || 'sent';
+                    if (!props.text) continue;
+                    props.hasImage = props.text.indexOf('<img') >= 0;
+                    if (animate) props.position = method === 'append' ? 'bottom' : 'top';
+        
+                    newMessagesHTML += m.template(props);
+                }
+                m.container[method](newMessagesHTML);
+        
+                if (m.params.autoLayout) m.layout();
+                if ((method === 'append' && !m.params.newMessagesFirst) || (method === 'prepend' && m.params.newMessagesFirst)) {
+                    m.scrollMessages(animate ? undefined : 0);
+                }
+                var messages = m.container.find('.message');
+                if (newMessages.length === 1) {
+                    return method === 'append' ? messages[messages.length - 1] : messages[0];
+                }
+                else {
+                    var messagesToReturn = [];
+                    if (method === 'append') {
+                        for (i = messages.length - newMessages.length; i < messages.length; i++) {
+                            messagesToReturn.push(messages[i]);
+                        }
+                    }
+                    else {
+                        for (i = 0; i < newMessages.length; i++) {
+                            messagesToReturn.push(messages[i]);
+                        }   
+                    }
+                    return messagesToReturn;
+                }
+                
+            };
+            m.removeMessage = function (message) {
+                message = $(message);
+                if (message.length === 0) {
+                    return false;
+                }
+                else {
+                    message.remove();
+                    if (m.params.autoLayout) m.layout();
+                    return true;
+                }
+            };
+            m.removeMessages = function (messages) {
+                m.removeMessage(messages);
+            };
+            m.clean = function () {
+                m.container.html('');
+            };
+        
+            // Scroll
+            m.scrollMessages = function (duration) {
+                if (typeof duration === 'undefined') duration = 400;
+                var currentScroll = m.pageContent[0].scrollTop;
+                var newScroll = m.params.newMessagesFirst ? 0 : m.pageContent[0].scrollHeight - m.pageContent[0].offsetHeight;
+                if (newScroll === currentScroll) return;
+                m.pageContent.scrollTop(newScroll, duration);
+            };
+        
+            // Init Destroy
+            m.init = function () {
+                if (m.params.messages) {
+                    m.addMessages(m.params.messages, undefined, false);
+                }
+                else {
+                    if (m.params.autoLayout) m.layout();    
+                    m.scrollMessages(0);
+                }
+                
+            };
+            m.destroy = function () {
+                m = null;
+            };
+        
+            // Init
+            m.init();
+        
+            m.container[0].f7Messages = m;
+            return m;
+        };
+        app.messages = function (container, params) {
+            return new Messages (container, params);
+        };
+        app.initPageMessages = function (pageContainer) {
+            pageContainer = $(pageContainer);
+            var messages = pageContainer.find('.messages');
             if (messages.length === 0) return;
-            var pageContent = page.find('.page-content');
-            if (messages.hasClass('messages-auto-layout')) app.updateMessagesLayout(messages);
-            if (!messages.hasClass('new-messages-first')) pageContent[0].scrollTop = pageContent[0].scrollHeight - pageContent[0].offsetHeight;
-        };
-        app.addMessage = function (props, messagesContent, addToTop) {
-            props = props || {};
-            props.type = props.type || 'sent';
-            if (!props.text || props.length === 0) return false;
-            messagesContent = $(messagesContent || '.messages-content');
-            if (messagesContent.length === 0) return false;
-            var messages = messagesContent.find('.messages');
-            var newOnTop = messages.hasClass('new-messages-first');
-        
-            if (typeof addToTop === 'undefined') {
-                addToTop = newOnTop ? true : false;
+            if (!messages.hasClass('messages-init')) {
+                return;
             }
-            var method = addToTop ? 'prepend' : 'append';
+            var m = app.messages(messages, messages.dataset());
         
-            var html = '';
-            if (props.day) {
-                html += '<div class="messages-date">' + props.day + (props.time ? ',' : '') + (props.time ? ' <span>' + props.time + '</span>' : '') + '</div>';
+            // Destroy on page remove
+            function pageBeforeRemove() {
+                m.destroy();
+                pageContainer.off('pageBeforeRemove', pageBeforeRemove);
             }
-            var isPic = props.text.indexOf('<img') >= 0 ? 'message-pic' : '';
-            var withAvatar = props.avatar ? 'message-with-avatar' : '';
-            var messageClass = 'message' + ' message-' + props.type + ' ' + isPic  + ' ' + withAvatar + ' message-appear-from-' + (method === 'append' ? 'bottom' : 'top');
-            html += '<div class="' + messageClass + '">' +
-                        (props.name ? '<div class="message-name">' + props.name + '</div>' : '') +
-                        '<div class="message-text">' + props.text + '</div>' +
-                        (props.avatar ? '<div class="message-avatar" style="background-image:url(' + props.avatar + ')"></div>' : '') +
-                        (props.label ? '<div class="message-label">' + props.label + '</div>' : '') +
-                    '</div>';
-            messages[method](html);
-            if (messages.hasClass('messages-auto-layout')) app.updateMessagesLayout(messages);
-            if ((method === 'append' && !newOnTop) || (method === 'prepend' && newOnTop)) {
-                app.scrollMessagesContainer(messagesContent);
+            if (pageContainer.hasClass('page')) {
+                pageContainer.on('pageBeforeRemove', pageBeforeRemove);
             }
-        };
-        app.updateMessagesLayout = function (messages) {
-            messages.find('.message').each(function () {
-                var message = $(this);
-                if (message.find('.message-text img').length > 0) message.addClass('message-pic');
-                if (message.find('.message-avatar').length > 0) message.addClass('message-with-avatar');
-            });
-            messages.find('.message-sent').each(function () {
-                var message = $(this);
-                var next = message.next('.message-sent');
-                var prev = message.prev('.message-sent');
-                if (next.length === 0) {
-                    message.addClass('message-last message-with-tail');
-                }
-                else message.removeClass('message-last message-with-tail');
-        
-                if (prev.length === 0) {
-                    message.addClass('message-first');
-                }
-                else message.removeClass('message-first');
-                // Search for changed names
-                if (prev.length > 0 && prev.find('.message-name').length > 0 && message.find('.message-name').length > 0) {
-                    if (prev.find('.message-name').text() !== message.find('.message-name').text()) {
-                        prev.addClass('message-last message-with-tail');
-                        message.addClass('message-first');
-                    }
-                }
-            });
-            messages.find('.message-received').each(function () {
-                var message = $(this);
-                var next = message.next('.message-received');
-                var prev = message.prev('.message-received');
-                if (next.length === 0) {
-                    message.addClass('message-last message-with-tail');
-                }
-                else message.removeClass('message-last message-with-tail');
-        
-                if (prev.length === 0) {
-                    message.addClass('message-first');
-                }
-                else message.removeClass('message-first');
-        
-                // Search for changed names
-                if (prev.length > 0 && prev.find('.message-name').length > 0 && message.find('.message-name').length > 0) {
-                    if (prev.find('.message-name').text() !== message.find('.message-name').text()) {
-                        prev.addClass('message-last message-with-tail');
-                        message.addClass('message-first');
-                    }
-                }
-            });
-        };
-        app.scrollMessagesContainer = function (messagesContent) {
-            messagesContent = $(messagesContent || '.messages-content');
-            if (messagesContent.length === 0) return;
-            var messages = messagesContent.find('.messages');
-            var newOnTop = messages.hasClass('new-messages-first');
-            var currentScroll = messagesContent[0].scrollTop;
-            var newScroll = newOnTop ? 0 : messagesContent[0].scrollHeight - messagesContent[0].offsetHeight;
-            if (newScroll === currentScroll) return;
-            messagesContent.scrollTop(newScroll, 400);
         };
         
 
@@ -4034,12 +4389,18 @@
             app.allowSwipeout = false;
             el.trigger('close');
             el.removeClass('swipeout-opened').addClass('transitioning');
-            el.find('.swipeout-content').transform('translate3d(' + 0 + 'px,0,0)').transitionEnd(function () {
+        
+            var closeTO;
+            function onSwipeoutClose() {
                 app.allowSwipeout = true;
                 buttons.transform('');
                 el.trigger('closed');
                 if (callback) callback.call(el[0]);
-            });
+                if (closeTO) clearTimeout(closeTO);
+            }
+            el.find('.swipeout-content').transform('translate3d(' + 0 + 'px,0,0)').transitionEnd(onSwipeoutClose);
+            closeTO = setTimeout(onSwipeoutClose, 500);
+            
             for (var i = 0; i < buttons.length; i++) {
                 if (dir === 'right') {
                     $(buttons[i]).transform('translate3d(' + (-buttons[i].offsetLeft) + 'px,0,0)');
@@ -4213,8 +4574,13 @@
         app.initSmartSelects = function (pageContainer) {
             var page = $(pageContainer);
             if (page.length === 0) return;
-        
-            var selects = page.find('.smart-select');
+            var selects;
+            if (page.is('.smart-select')) {
+                selects = page;
+            }
+            else {
+                selects = page.find('.smart-select');
+            }
             if (selects.length === 0) return;
         
             selects.each(function () {
@@ -4249,7 +4615,23 @@
             });
             
         };
-        app.smartSelectOpen = function (smartSelect) {
+        app.smartSelectAddOption = function (select, option, index) {
+            select = $(select);
+            var smartSelect = select.parents('.smart-select');
+            if (typeof index === 'undefined') {
+                select.append(option);
+            }
+            else {
+                $(option).insertBefore(select.find('option').eq(index));
+            }
+            app.initSmartSelects(smartSelect);
+            var selectName = smartSelect.find('select').attr('name');
+            var opened = $('.page.smart-select-page[data-select-name="' + selectName + '"]').length > 0;
+            if (opened) {
+                app.smartSelectOpen(smartSelect, true);
+            }
+        };
+        app.smartSelectOpen = function (smartSelect, reLayout) {
             smartSelect = $(smartSelect);
             if (smartSelect.length === 0) return;
         
@@ -4263,18 +4645,20 @@
             var openIn = smartSelect.attr('data-open-in');
             if (!openIn) openIn = app.params.smartSelectInPopup ? 'popup' : 'page';
         
-            var pageTitle = smartSelect.attr('data-page-title') || smartSelect.find('.item-title').text();
-            var backText = smartSelect.attr('data-back-text') || app.params.smartSelectBackText;
-            var closeText = smartSelect.attr('data-popup-close-text') || smartSelect.attr('data-back-text') || app.params.smartSelectPopupCloseText ;
-            var backOnSelect = smartSelect.attr('data-back-onselect') ? (smartSelect.attr('data-back-onselect') === 'true' ? true : false) : app.params.smartSelectBackOnSelect;
-            var formTheme = smartSelect.attr('data-form-theme') || app.params.smartSelectFormTheme;
-            var navbarTheme = smartSelect.attr('data-navbar-theme') || app.params.smartSelectNavbarTheme;
-            var virtualList = smartSelect.attr('data-virtual-list') === 'true';
-            var virtualListItemHeight = smartSelect.attr('data-virtual-list-height');
+            var smartSelectData = smartSelect.dataset();
+            var pageTitle = smartSelectData.pageTitle || smartSelect.find('.item-title').text();
+            var backText = smartSelectData.backText || app.params.smartSelectBackText;
+            var closeText = smartSelectData.popupCloseText || smartSelectData.backText || app.params.smartSelectPopupCloseText ;
+            var backOnSelect = smartSelectData.backOnSelect !== undefined ? smartSelectData.backOnSelect : app.params.smartSelectBackOnSelect;
+            var formTheme = smartSelectData.formTheme || app.params.smartSelectFormTheme;
+            var navbarTheme = smartSelectData.navbarTheme || app.params.smartSelectNavbarTheme;
+            var virtualList = smartSelectData.virtualList;
+            var virtualListHeight = smartSelectData.virtualListHeight;
         
             // Collect all options/values
             var select = smartSelect.find('select')[0];
             var $select = $(select);
+            var $selectData = $select.dataset();
             if (select.disabled || smartSelect.hasClass('disabled') || $select.hasClass('disabled')) {
                 return;
             }
@@ -4282,13 +4666,17 @@
             var id = (new Date()).getTime();
             var inputType = select.multiple ? 'checkbox' : 'radio';
             var inputName = inputType + '-' + id;
-            var option, optionHasMedia, optionImage, optionIcon, optionGroup, optionGroupLabel, optionPreviousGroup, optionShowGroupLabel, previousGroup;
+            var selectName = select.name;
+            var option, optionHasMedia, optionImage, optionIcon, optionGroup, optionGroupLabel, optionPreviousGroup, optionShowGroupLabel, previousGroup, optionColor, optionClassName, optionData;
             for (var i = 0; i < select.length; i++) {
                 option = $(select[i]);
                 if (option[0].disabled) continue;
-                optionImage = option.attr('data-option-image') || $select.attr('data-option-image');
-                optionIcon = option.attr('data-option-icon') || $select.attr('data-option-icon');
+                optionData = option.dataset();
+                optionImage = optionData.optionImage || $selectData.optionImage;
+                optionIcon = optionData.optionIcon || $selectData.optionIcon;
                 optionHasMedia = optionImage || optionIcon || inputType === 'checkbox';
+                optionColor = optionData.optionColor;
+                optionClassName = optionData.optionClass;
                 optionGroup = option.parent('optgroup')[0];
                 optionGroupLabel = optionGroup && optionGroup.label;
                 optionShowGroupLabel = false;
@@ -4307,6 +4695,8 @@
                     showGroupLabel: optionShowGroupLabel,
                     image: optionImage,
                     icon: optionIcon,
+                    color: optionColor,
+                    className: optionClassName,
                     disabled: option[0].disabled,
                     inputType: inputType,
                     id: id,
@@ -4324,7 +4714,7 @@
                     '{{#if showGroupLabel}}' +
                     '<li class="item-divider">{{groupLabel}}</li>' +
                     '{{/if}}' +
-                    '<li>' +
+                    '<li{{#if className}} class="{{className}}"{{/if}}>' +
                         '<label class="label-{{inputType}} item-content">' +
                             '<input type="{{inputType}}" name="{{inputName}}" value="{{value}}" {{#if selected}}checked{{/if}}>' +
                             '{{#if hasMedia}}' +
@@ -4335,7 +4725,7 @@
                             '</div>' +
                             '{{/if}}' +
                             '<div class="item-inner">' +
-                                '<div class="item-title">{{text}}</div>' +
+                                '<div class="item-title{{#if color}} color-{{color}}{{/if}}">{{text}}</div>' +
                             '</div>' +
                         '</label>' +
                     '</li>'
@@ -4398,7 +4788,7 @@
                 searchbarCancel = smartSelect.data('searchbar-cancel') || 'Cancel';
             }
         
-            var searchbarHTML =   '<form class="searchbar" data-search-list=".smart-select-list-' + id + '" data-search-in=".item-title">' +
+            var searchbarHTML =   '<form class="searchbar searchbar-init" data-search-list=".smart-select-list-' + id + '" data-search-in=".item-title">' +
                                     '<div class="searchbar-input">' +
                                         '<input type="search" placeholder="' + searchbarPlaceholder + '">' +
                                         '<a href="#" class="searchbar-clear"></a>' +
@@ -4410,7 +4800,7 @@
             var pageHTML =
                 (navbarLayout === 'through' ? navbarHTML : '') +
                 '<div class="pages">' +
-                '  <div data-page="' + pageName + '" class="page smart-select-page ' + noNavbar + ' ' + noToolbar + '">' +
+                '  <div data-page="' + pageName + '" data-select-name="' + selectName + '" class="page smart-select-page ' + noNavbar + ' ' + noToolbar + '">' +
                      (navbarLayout === 'fixed' ? navbarHTML : '') +
                      (useSearchbar ? searchbarHTML : '') +
                 '    <div class="page-content">' +
@@ -4433,9 +4823,9 @@
                     var virtualListInstance = app.virtualList($(container).find('.virtual-list'), {
                         items: values,
                         template: smartSelectItemTemplate,
-                        height: virtualListItemHeight || undefined,
+                        height: virtualListHeight || undefined,
                         searchByItem: function (query, index, item) {
-                            if (item.text.toLowerCase().indexOf(query.trim()) >=0 ) return true;
+                            if (item.text.toLowerCase().indexOf(query.trim().toLowerCase()) >=0 ) return true;
                             return false;
                         }
                     });
@@ -4475,26 +4865,33 @@
             function pageInit(e) {
                 var page = e.detail.page;
                 if (page.name === pageName) {
-                    $(document).off('pageInit', pageInit);
                     handleInputs(page.container);
                 }
             }
-            
-            // Load content
             if (openIn === 'popup') {
-                popup = app.popup(
+                if (reLayout) {
+                    popup = $('.popup.smart-select-popup .view');
+                    popup.html(pageHTML);
+                }
+                else {
+                    popup = app.popup(
                         '<div class="popup smart-select-popup smart-select-popup-' + inputName + '">' +
                             '<div class="view navbar-fixed">' +
                                 pageHTML +
                             '</div>' +
                         '</div>'
                         );
-                app.initPage($(popup).find('.page'));
+                    popup = $(popup);
+                }
+                app.initPage(popup.find('.page'));
                 handleInputs(popup);
             }
             else {
-                $(document).on('pageInit', pageInit);
-                view.router.load({content: pageHTML});
+                $(document).once('pageInit', '.smart-select-page', pageInit);
+                view.router.load({
+                    content: pageHTML,
+                    reload: reLayout ? true : undefined
+                });
             }
         };
         
@@ -4719,7 +5116,7 @@
         
                 if (vl.params.onItemsBeforeInsert) vl.params.onItemsBeforeInsert(vl, vl.fragment);
                 vl.ul[0].appendChild(vl.fragment);
-                if (vl.params.onItemsAfterInsert) vl.params.onFragmentAfterInsert(vl, vl.fragment);
+                if (vl.params.onItemsAfterInsert) vl.params.onItemsAfterInsert(vl, vl.fragment);
         
                 if (typeof forceScrollTop !== 'undefined' && force) {
                     vl.pageContent.scrollTop(forceScrollTop, 0);
@@ -4945,7 +5342,7 @@
             var vlists = page.find('.virtual-list');
             if (vlists.length === 0) return;
             for (var i = 0; i < vlists.length; i++) {
-                var vlistInstance = vlistInstance[0].f7VirtualList;
+                var vlistInstance = vlists[i].f7VirtualList;
                 if (vlistInstance) {
                     vlistInstance.update();
                 }
@@ -5446,9 +5843,13 @@
             if (app.params.activeState) {
                 $('html').addClass('watch-active-state');
             }
+            if (app.device.ios && app.device.webView) {
+                // Strange hack required for iOS 8 webview to work on inputs
+                window.addEventListener('touchstart', function () {});
+            }
         
-            var touchStartX, touchStartY, touchStartTime, targetElement, trackClick, activeSelection, scrollParent, lastClickTime, isMoved;
-            var activableElement, activeTimeout, needsFastClick;
+            var touchStartX, touchStartY, touchStartTime, targetElement, trackClick, activeSelection, scrollParent, lastClickTime, isMoved, tapHoldFired, tapHoldTimeout;
+            var activableElement, activeTimeout, needsFastClick, needsFastClickTimeOut;
         
             function findActivableElement(e) {
                 var target = $(e.target);
@@ -5485,9 +5886,13 @@
             function removeActive(el) {
                 activableElement.removeClass('active-state');
             }
-        
+            function isFormElement(el) {
+                var nodes = ('input select textarea label').split(' ');
+                if (el.nodeName && nodes.indexOf(el.nodeName.toLowerCase()) >= 0) return true;
+                return false;
+            }
             function androidNeedsBlur(el) {
-                var noBlur = ('button checkbox file image radio submit input textarea').split(' ');
+                var noBlur = ('button input textarea select').split(' ');
                 if (document.activeElement && el !== document.activeElement && document.activeElement !== document.body) {
                     if (noBlur.indexOf(el.nodeName.toLowerCase()) >= 0) {
                         return false;
@@ -5554,9 +5959,19 @@
             // Touch Handlers
             function handleTouchStart(e) {
                 isMoved = false;
+                tapHoldFired = false;
                 if (e.targetTouches.length > 1) {
                     return true;
                 }
+                if (app.params.tapHold) {
+                    if (tapHoldTimeout) clearTimeout(tapHoldTimeout);
+                    tapHoldTimeout = setTimeout(function () {
+                        tapHoldFired = true;
+                        e.preventDefault();
+                        $(e.target).trigger('taphold');
+                    }, app.params.tapHoldDelay);
+                }
+                if (needsFastClickTimeOut) clearTimeout(needsFastClickTimeOut);
                 needsFastClick = targetNeedsFastClick(e.target);
         
                 if (!needsFastClick) {
@@ -5629,15 +6044,18 @@
                     trackClick = false;
                     targetElement = null;
                     isMoved = true;
-                }
-                    
-                if (app.params.activeState) {
-                    clearTimeout(activeTimeout);
-                    removeActive();
+                    if (app.params.tapHold) {
+                        clearTimeout(tapHoldTimeout);
+                    }
+        			if (app.params.activeState) {
+        				clearTimeout(activeTimeout);
+        				removeActive();
+        			}
                 }
             }
             function handleTouchEnd(e) {
                 clearTimeout(activeTimeout);
+                clearTimeout(tapHoldTimeout);
         
                 if (!trackClick) {
                     if (!activeSelection && needsFastClick) {
@@ -5709,18 +6127,20 @@
         
             function handleClick(e) {
                 var allowClick = false;
+                
                 if (trackClick) {
                     targetElement = null;
                     trackClick = false;
                     return true;
                 }
-        
                 if (e.target.type === 'submit' && e.detail === 0) {
                     return true;
                 }
-                // if (!targetElement) {
-                //     allowClick =  true;
-                // }
+                if (!targetElement) {
+                    if (!isFormElement(e.target)) {
+                        allowClick =  true;
+                    }
+                }
                 if (!needsFastClick) {
                     allowClick = true;
                 }
@@ -5732,6 +6152,9 @@
                 }
                 if (!e.cancelable) {
                     allowClick =  true;
+                }
+                if (app.params.tapHold && app.params.tapHoldPreventClicks && tapHoldFired) {
+                    allowClick = false;
                 }
                 if (!allowClick) {
                     e.stopImmediatePropagation();
@@ -5746,6 +6169,16 @@
                     }
                     targetElement = null;
                 }
+                needsFastClickTimeOut = setTimeout(function () {
+                    needsFastClick = false;
+                }, (app.device.ios || app.device.androidChrome ? 100 : 400));
+        
+                if (app.params.tapHold) {
+                    tapHoldTimeout = setTimeout(function () {
+                        tapHoldFired = false;
+                    }, (app.device.ios || app.device.androidChrome ? 100 : 400));
+                }
+                    
                 return allowClick;
             }
             if (app.support.touch) {
@@ -5834,13 +6267,7 @@
                 var clicked = $(this);
                 var url = clicked.attr('href');
                 var isLink = clicked[0].nodeName.toLowerCase() === 'a';
-        
-                // Str to boolean for data attributes
-                function toBoolean(str) {
-                    if (str === 'false') return false;
-                    if (str === 'true') return true;
-                    return undefined;
-                }
+                
                 // Check if link is external 
                 if (isLink) {
                     if (clicked.is(app.params.externalLinks)) {
@@ -5851,6 +6278,9 @@
                         return;
                     }
                 }
+        
+                // Collect Clicked data- attributes
+                var clickedData = clicked.dataset();
         
                 // Smart Select
                 if (clicked.hasClass('smart-select')) {
@@ -5864,7 +6294,7 @@
                         else app.openPanel('right');
                     }
                     else {
-                        if (clicked.attr('data-panel') === 'right') app.openPanel('right');
+                        if (clickedData.panel === 'right') app.openPanel('right');
                         else app.openPanel('left');
                     }
                 }
@@ -5879,8 +6309,8 @@
                 // Popover
                 if (clicked.hasClass('open-popover')) {
                     var popover;
-                    if (clicked.attr('data-popover')) {
-                        popover = clicked.attr('data-popover');
+                    if (clickedData.popover) {
+                        popover = clickedData.popover;
                     }
                     else popover = '.popover';
                     app.popover(popover, clicked);
@@ -5891,15 +6321,15 @@
                 // Popup
                 var popup;
                 if (clicked.hasClass('open-popup')) {
-                    if (clicked.attr('data-popup')) {
-                        popup = clicked.attr('data-popup');
+                    if (clickedData.popup) {
+                        popup = clickedData.popup;
                     }
                     else popup = '.popup';
                     app.popup(popup);
                 }
                 if (clicked.hasClass('close-popup')) {
-                    if (clicked.attr('data-popup')) {
-                        popup = clicked.attr('data-popup');
+                    if (clickedData.popup) {
+                        popup = clickedData.popup;
                     }
                     else popup = '.popup.modal-in';
                     app.closeModal(popup);
@@ -5907,8 +6337,8 @@
                 // Login Screen
                 var loginScreen;
                 if (clicked.hasClass('open-login-screen')) {
-                    if (clicked.attr('data-login-screen')) {
-                        loginScreen = clicked.attr('data-login-screen');
+                    if (clickedData.loginScreen) {
+                        loginScreen = clickedData.loginScreen;
                     }
                     else loginScreen = '.login-screen';
                     app.loginScreen(loginScreen);
@@ -5945,8 +6375,8 @@
                 }
                 if (clicked.hasClass('open-picker')) {
                     var pickerToOpen;
-                    if (clicked.attr('data-picker')) {
-                        pickerToOpen = clicked.attr('data-picker');
+                    if (clickedData.picker) {
+                        pickerToOpen = clickedData.picker;
                     }
                     else pickerToOpen = '.picker-modal';
                     app.pickerModal(pickerToOpen, clicked);
@@ -5956,7 +6386,7 @@
                 var isTabLink;
                 if (clicked.hasClass('tab-link')) {
                     isTabLink = true;
-                    app.showTab(clicked.attr('data-tab') || clicked.attr('href'), clicked);
+                    app.showTab(clickedData.tab || clicked.attr('href'), clicked);
                 }
                 // Swipeout Close
                 if (clicked.hasClass('swipeout-close')) {
@@ -5964,9 +6394,9 @@
                 }
                 // Swipeout Delete
                 if (clicked.hasClass('swipeout-delete')) {
-                    if (clicked.attr('data-confirm')) {
-                        var text = clicked.attr('data-confirm');
-                        var title = clicked.attr('data-confirm-title');
+                    if (clickedData.confirm) {
+                        var text = clickedData.confirm;
+                        var title = clickedData.confirmTitle;
                         if (title) {
                             app.confirm(text, title, function () {
                                 app.swipeoutDelete(clicked.parents('.swipeout'));
@@ -5985,13 +6415,13 @@
                 }
                 // Sortable
                 if (clicked.hasClass('toggle-sortable')) {
-                    app.sortableToggle(clicked.data('sortable'));
+                    app.sortableToggle(clickedData.sortable);
                 }
                 if (clicked.hasClass('open-sortable')) {
-                    app.sortableOpen(clicked.data('sortable'));
+                    app.sortableOpen(clickedData.sortable);
                 }
                 if (clicked.hasClass('close-sortable')) {
-                    app.sortableClose(clicked.data('sortable'));
+                    app.sortableClose(clickedData.sortable);
                 }
                 // Accordion
                 if (clicked.hasClass('accordion-item-toggle') || (clicked.hasClass('item-link') && clicked.parent().hasClass('accordion-item'))) {
@@ -6010,11 +6440,11 @@
                 }
         
                 var validUrl = url && url.length > 0 && url !== '#' && !isTabLink;
-                var template = clicked.attr('data-template');
+                var template = clickedData.template;
                 if (validUrl || clicked.hasClass('back') || template) {
                     var view;
-                    if (clicked.attr('data-view')) {
-                        view = $(clicked.attr('data-view'))[0].f7View;
+                    if (clickedData.view) {
+                        view = $(clickedData.view)[0].f7View;
                     }
                     else {
                         view = clicked.parents('.' + app.params.viewClass)[0] && clicked.parents('.' + app.params.viewClass)[0].f7View;
@@ -6044,8 +6474,8 @@
                     }
         
                     var animatePages;
-                    if (clicked.attr('data-animatePages')) {
-                        animatePages = toBoolean(clicked.attr('data-animatePages'));
+                    if (typeof clickedData.animatePages !== 'undefined') {
+                        animatePages = clickedData.animatePages;
                     }
                     else {
                         if (clicked.hasClass('with-animation')) animatePages = true;
@@ -6054,17 +6484,17 @@
                     
                     var options = {
                         animatePages: animatePages,
-                        ignoreCache: toBoolean(clicked.attr('data-ignoreCache')),
-                        force: toBoolean(clicked.attr('data-force')),
-                        reload: toBoolean(clicked.attr('data-reload')),
-                        reloadPrevious: toBoolean(clicked.attr('data-reloadPrevious')),
+                        ignoreCache: clickedData.ignoreCache,
+                        force: clickedData.force,
+                        reload: clickedData.reload,
+                        reloadPrevious: clickedData.reloadPrevious,
                         pageName: pageName,
                         url: url
                     };
         
                     if (app.params.template7Pages) {
-                        options.contextName = clicked.attr('data-contextName');
-                        var context = clicked.attr('data-context');
+                        options.contextName = clickedData.contextName;
+                        var context = clickedData.context;
                         if (context) {
                             options.context = JSON.parse(context);
                         }
@@ -6087,7 +6517,7 @@
                 e.preventDefault();
             }
             if (app.support.touch) {
-                $(document).on('touchstart', '.panel-overlay, .modal-overlay, .preloader-indicator-overlay, .popup-overlay, .searchbar-overlay', preventScrolling);
+                $(document).on((app.params.fastClicks ? 'touchstart' : 'touchmove'), '.panel-overlay, .modal-overlay, .preloader-indicator-overlay, .popup-overlay, .searchbar-overlay', preventScrolling);
             }
         };
         
@@ -6436,7 +6866,7 @@
         app.swiper = function (container, params) {
             return new Swiper(container, params);
         };
-        app.initSwiper = function (pageContainer) {
+        app.initPageSwiper = function (pageContainer) {
             var page = $(pageContainer);
             var swipers = page.find('.swiper-init');
             if (swipers.length === 0) return;
@@ -6454,40 +6884,20 @@
                     params = JSON.parse(swiper.data('swiper'));
                 }
                 else {
-                    params = {
-                        initialSlide: parseInt(swiper.data('initialSlide'), 10) || undefined,
-                        spaceBetween: parseInt(swiper.data('spaceBetween'), 10) || undefined,
-                        speed: parseInt(swiper.data('speed'), 10) || undefined,
-                        slidesPerView: swiper.data('slidesPerView') || undefined,
-                        slidesPerColumn: parseInt(swiper.data('slidesPerColumn'), 10) || undefined,
-                        centeredSlides: swiper.data('centeredSlides') && (swiper.data('centeredSlides') === 'true' ? true : false),
-                        direction: swiper.data('direction'),
-                        pagination: swiper.data('pagination'),
-                        paginationHide: swiper.data('paginationHide') && (swiper.data('paginationHide') === 'true' ? true : false),
-                        paginationClickable: swiper.data('paginationClickable') && (swiper.data('paginationClickable') === 'true' ? true : false),
-                        scrollbar: swiper.data('scrollbar'),
-                        scrollbarHide: swiper.data('scrollbarHide') && (swiper.data('scrollbarHide') === 'true' ? true : false),
-                        loop: swiper.data('loop') && (swiper.data('loop') === 'true' ? true : false),
-                        effect: swiper.data('effect') || 'slide',
-                        freeMode: swiper.data('freeMode') && (swiper.data('freeMode') === 'true' ? true : false),
-                        onlyExternal: swiper.data('onlyExternal') && (swiper.data('onlyExternal') === 'true' ? true : false),
-                        nextButton: swiper.data('nextButton'),
-                        prevButton: swiper.data('prevButton'),
-                        autoplay: swiper.data('autoplay')
-                    };
+                    params = swiper.dataset();
                 }
                 var _slider = app.swiper(swiper[0], params);
                 destroySwiperOnRemove(_slider);
             }
         };
-        app.reinitSwiper = function (pageContainer) {
+        app.reinitPageSwiper = function (pageContainer) {
             var page = $(pageContainer);
             var sliders = page.find('.swiper-init');
             if (sliders.length === 0) return;
             for (var i = 0; i < sliders.length; i++) {
                 var sliderInstance = sliders[0].swiper;
                 if (sliderInstance) {
-                    sliderInstance.onResize();
+                    sliderInstance.update(true);
                 }
             }
         };
@@ -6519,7 +6929,20 @@
                 loop: false,
                 lazyLoading: false,
                 lazyLoadingInPrevNext: false,
-                lazyLoadingOnTransitionStart: false
+                lazyLoadingOnTransitionStart: false,
+                /*
+                Callbacks:
+                onLazyImageLoad(pb, slide, img)
+                onLazyImageReady(pb, slide, img)
+                onOpen(pb)
+                onClose(pb)
+                onSlideChangeStart(swiper)
+                onSlideChangeEnd(swiper)
+                onTap(swiper, e)
+                onClick(swiper, e)
+                onDoubleTap(swiper, e)
+                onSwipeToClose(pb)
+                */
             };
             
             params = params || {};
@@ -6567,7 +6990,7 @@
         
             var photoTemplate = !pb.params.lazyLoading ? 
                 (pb.params.photoTemplate || '<div class="photo-browser-slide swiper-slide"><span class="photo-browser-zoom-container"><img src="{{url}}"></span></div>') : 
-                (pb.params.photoLazyTemplate || '<div class="photo-browser-slide photo-browser-slide-lazy swiper-slide"><div class="preloader' + (pb.params.theme === 'dark' ? ' preloader-white' : '') + '"></div><span class="photo-browser-zoom-container"><img data-src="{{url}}"></span></div>');
+                (pb.params.photoLazyTemplate || '<div class="photo-browser-slide photo-browser-slide-lazy swiper-slide"><div class="preloader' + (pb.params.theme === 'dark' ? ' preloader-white' : '') + '"></div><span class="photo-browser-zoom-container"><img data-src="{{url}}" class="swiper-lazy"></span></div>');
         
             var captionsTheme = pb.params.captionsTheme || pb.params.theme;
             var captionsTemplate = pb.params.captionsTemplate || '<div class="photo-browser-captions photo-browser-captions-' + captionsTheme + '">{{captions}}</div>';
@@ -6633,7 +7056,7 @@
                 }
                 pb.opened = true;
                 pb.openIndex = index;
-                pb.initialLazyLoaded = false;
+                // pb.initialLazyLoaded = false;
                 if (pb.params.type === 'standalone') {
                     $('body').append(htmlTemplate);
                 }
@@ -6693,45 +7116,6 @@
                 $(document).off('pageBeforeRemove', pb.onPageBeforeRemove);
             };
         
-            pb.loadImageInSlide = function (swiper, index) {
-                if (!swiper || typeof index === 'undefined') return;
-                if (swiper.slides.length === 0) return;
-                
-                var slide = swiper.slides.eq(index);
-                if (!slide.hasClass('photo-browser-slide-lazy')) return;
-        
-                var img = slide.find('img');
-                if (img.length === 0) return;
-        
-                var image = new Image();
-                var src = img.attr('data-src');
-                
-                image.onload = function () {
-                    img.attr('src', src);
-                    img.removeAttr('data-src');
-                    slide.removeClass('photo-browser-slide-lazy').find('.preloader').remove();
-                    if (pb.params.onImageLoaded) {
-                        pb.params.onImageLoaded(pb, slide[0], img[0]);
-                    }
-                };
-                image.src = src;
-        
-                if (pb.params.onImageLoad) {
-                    pb.params.onImageLoad(pb, slide[0], img[0]);
-                }
-            };
-        
-            pb.lazyLoading = function (swiper, activeIndex) {
-                pb.loadImageInSlide(swiper, activeIndex);
-                if (pb.params.lazyLoadingInPrevNext) {
-                    var nextSlide = swiper.wrapper.find('.swiper-slide-next.photo-browser-slide-lazy');
-                    if (nextSlide.length > 0) pb.loadImageInSlide(swiper, nextSlide.index());
-        
-                    var prevSlide = swiper.wrapper.find('.swiper-slide-prev.photo-browser-slide-lazy');
-                    if (prevSlide.length > 0) pb.loadImageInSlide(swiper, prevSlide.index());
-                }
-            };
-            
             pb.onSliderTransitionStart = function (swiper) {
                 pb.activeIndex = swiper.activeIndex;
         
@@ -6762,13 +7146,6 @@
                     pb.captionsContainer.find('[data-caption-index="' + captionIndex + '"]').addClass('photo-browser-caption-active');
                 }
         
-                // Lazy loading
-                if (pb.params.lazyLoading){
-                    if (pb.params.lazyLoadingOnTransitionStart || (!pb.params.lazyLoadingOnTransitionStart && !pb.initialLazyLoaded)) {
-                        pb.initialLazyLoaded = true;
-                        pb.lazyLoading(swiper, pb.activeIndex);
-                    }
-                }
         
                 // Stop Video
                 var previousSlideVideo = swiper.slides.eq(swiper.previousIndex).find('video');
@@ -6779,9 +7156,6 @@
                 if (pb.params.onSlideChangeStart) pb.params.onSlideChangeStart(swiper);
             };
             pb.onSliderTransitionEnd = function (swiper) {
-                if (pb.params.lazyLoading && !pb.params.lazyLoadingOnTransitionStart) {
-                    pb.lazyLoading(swiper, pb.activeIndex);
-                }
                 // Reset zoom
                 if (pb.params.zoom && gestureSlide && swiper.previousIndex !== swiper.activeIndex) {
                     gestureImg.transform('translate3d(0,0,0) scale(1)');
@@ -6817,6 +7191,10 @@
                     spaceBetween: pb.params.spaceBetween,
                     speed: pb.params.speed,
                     loop: pb.params.loop,
+                    lazyLoading: pb.params.lazyLoading,
+                    lazyLoadingInPrevNext: pb.params.lazyLoadingInPrevNext,
+                    lazyLoadingOnTransitionStart: pb.params.lazyLoadingOnTransitionStart,
+                    preloadImages: pb.params.lazyLoading ? false : true,
                     onTap: function (swiper, e) {
                         if (pb.params.onTap) pb.params.onTap(swiper, e);
                     },
@@ -6833,6 +7211,13 @@
                     },
                     onTransitionEnd: function (swiper) {
                         pb.onSliderTransitionEnd(swiper);  
+                    },
+                    onLazyImageLoad: function (swiper, slide, img) {
+                        if (pb.params.onLazyImageLoad) pb.params.onLazyImageLoad(pb, slide, img);
+                    },
+                    onLazyImageReady: function (swiper, slide, img) {
+                        $(slide).removeClass('photo-browser-slide-lazy');
+                        if (pb.params.onLazyImageReady) pb.params.onLazyImageReady(pb, slide, img);
                     }
                 };
         
@@ -7141,6 +7526,7 @@
                 scrollToInput: true,
                 inputReadOnly: true,
                 convertToPopover: true,
+                onlyInPopover: false,
                 toolbar: true,
                 toolbarCloseText: 'Done',
                 toolbarTemplate: 
@@ -7172,13 +7558,16 @@
             // Should be converted to popover
             function isPopover() {
                 var toPopover = false;
-                if (!p.params.convertToPopover) return toPopover;
+                if (!p.params.convertToPopover && !p.params.onlyInPopover) return toPopover;
                 if (!p.inline && p.params.input) {
-                    if (app.device.ios) {
-                        toPopover = app.device.ipad ? true : false;
-                    }
+                    if (p.params.onlyInPopover) toPopover = true;
                     else {
-                        if ($(window).width() >= 768) toPopover = true;
+                        if (app.device.ios) {
+                            toPopover = app.device.ipad ? true : false;
+                        }
+                        else {
+                            if ($(window).width() >= 768) toPopover = true;
+                        }
                     }
                 } 
                 return toPopover; 
@@ -7234,6 +7623,7 @@
                 var i, j;
                 var wrapperHeight, itemHeight, itemsHeight, minTranslate, maxTranslate;
                 col.replaceValues = function (values, displayValues) {
+                    col.destroyEvents();
                     col.values = values;
                     col.displayValues = displayValues;
                     var newItemsHTML = p.columnHTML(col, true);
@@ -7241,6 +7631,7 @@
                     col.items = col.wrapper.find('.picker-item');
                     col.calcSize();
                     col.setValue(col.values[0], 0, true);
+                    col.initEvents();
                 };
                 col.calcSize = function () {
                     if (p.params.rotateEffect) {
@@ -7480,17 +7871,22 @@
                     col.setValue(value);
                 }
         
-                col.container.on(app.touchEvents.start, handleTouchStart);
-                col.container.on(app.touchEvents.move, handleTouchMove);
-                col.container.on(app.touchEvents.end, handleTouchEnd);
-                col.items.on('click', handleClick);
+                col.initEvents = function (detach) {
+                    var method = detach ? 'off' : 'on';
+                    col.container[method](app.touchEvents.start, handleTouchStart);
+                    col.container[method](app.touchEvents.move, handleTouchMove);
+                    col.container[method](app.touchEvents.end, handleTouchEnd);
+                    col.items[method]('click', handleClick);
+                };
+                col.destroyEvents = function () {
+                    col.initEvents(true);
+                };
         
                 col.container[0].f7DestroyPickerCol = function () {
-                    col.container.off(app.touchEvents.start, handleTouchStart);
-                    col.container.off(app.touchEvents.move, handleTouchMove);
-                    col.container.off(app.touchEvents.end, handleTouchEnd);
-                    col.items.off('click', handleClick);
+                    col.destroyEvents();
                 };
+        
+                col.initEvents();
         
             };
             p.destroyPickerCol = function (colContainer) {
@@ -7744,6 +8140,7 @@
                 scrollToInput: true,
                 inputReadOnly: true,
                 convertToPopover: true,
+                onlyInPopover: false,
                 toolbar: true,
                 toolbarCloseText: 'Done',
                 toolbarTemplate: 
@@ -7788,13 +8185,16 @@
             // Should be converted to popover
             function isPopover() {
                 var toPopover = false;
-                if (!p.params.convertToPopover) return toPopover;
+                if (!p.params.convertToPopover && !p.params.onlyInPopover) return toPopover;
                 if (!p.inline && p.params.input) {
-                    if (app.device.ios) {
-                        toPopover = app.device.ipad ? true : false;
-                    }
+                    if (p.params.onlyInPopover) toPopover = true;
                     else {
-                        if ($(window).width() >= 768) toPopover = true;
+                        if (app.device.ios) {
+                            toPopover = app.device.ipad ? true : false;
+                        }
+                        else {
+                            if ($(window).width() >= 768) toPopover = true;
+                        }
                     }
                 } 
                 return toPopover; 
@@ -8267,7 +8667,13 @@
                     transition = '';
                     if (!p.params.animate) transition = 0;
                 }
-                var targetDate = new Date(year, month).getTime();
+                var targetDate;
+                if (year < p.currentYear) {
+                    targetDate = new Date(year, month + 1, -1).getTime();
+                }
+                else {
+                    targetDate = new Date(year, month).getTime();
+                }
                 if (p.params.maxDate && targetDate > new Date(p.params.maxDate).getTime()) {
                     return false;
                 }
@@ -8275,7 +8681,7 @@
                     return false;
                 }
                 var currentDate = new Date(p.currentYear, p.currentMonth).getTime();
-                var dir;
+                var dir = targetDate > currentDate ? 'next' : 'prev';
                 var newMonthHTML = p.monthHTML(new Date(year, month));
                 p.monthsTranslate = p.monthsTranslate || 0;
                 var prevTranslate = p.monthsTranslate;
@@ -8284,7 +8690,6 @@
                 if (targetDate > currentDate) {
                     // To next
                     p.monthsTranslate --;
-                    dir = 'next';
                     if (!p.animating) p.months.eq(p.months.length - 1).remove();
                     p.wrapper.append(newMonthHTML);
                     p.months = p.wrapper.find('.picker-calendar-month');
@@ -8294,7 +8699,6 @@
                 else {
                     // To prev
                     p.monthsTranslate ++;
-                    dir = 'prev';
                     if (!p.animating) p.months.eq(0).remove();
                     p.wrapper.prepend(newMonthHTML);
                     p.months = p.wrapper.find('.picker-calendar-month');
@@ -8735,6 +9139,11 @@
             $('.page:not(.cached)').each(function () {
                 app.initPageWithCallback(this);
             });
+        
+            // Init each navbar callbacks
+            $('.navbar:not(.cached)').each(function () {
+                app.initNavbarWithCallback(this); 
+            });
             
             // Init resize events
             if (app.initResize) app.initResize();
@@ -8895,6 +9304,7 @@
                 for (var i = 0; i < this.length; i++) {
                     this[i].removeAttribute(attr);
                 }
+                return this;
             },
             prop: function (props, value) {
                 if (arguments.length === 1 && typeof props === 'string') {
@@ -8939,6 +9349,32 @@
                     }
                     return this;
                 }
+            },
+            dataset: function () {
+                var el = this[0];
+                if (el) {
+                    var dataset = {};
+                    if (el.dataset) {
+                        for (var dataKey in el.dataset) {
+                            dataset[dataKey] = el.dataset[dataKey];
+                        }
+                    }
+                    else {
+                        for (var i = 0; i < el.attributes.length; i++) {
+                            var attr = el.attributes[i];
+                            if (attr.name.indexOf('data-') >= 0) {
+                                dataset[$.toCamelCase(attr.name.split('data-')[1])] = attr.value;
+                            }
+                        }
+                    }
+                    for (var key in dataset) {
+                        if (dataset[key] === 'false') dataset[key] = false;
+                        else if (dataset[key] === 'true') dataset[key] = true;
+                        else if (parseFloat(dataset[key]) === dataset[key] * 1) dataset[key] = dataset[key] * 1;
+                    }
+                    return dataset;
+                }
+                else return undefined;
             },
             val: function (value) {
                 if (typeof value === 'undefined') {
@@ -9193,7 +9629,7 @@
                 }
                 return this;
             },
-            
+        
             //Dom manipulation
             each: function (callback) {
                 for (var i = 0; i < this.length; i++) {
@@ -9226,7 +9662,7 @@
                 }
             },
             is: function (selector) {
-                if (!this[0]) return false;
+                if (!this[0] || typeof selector === 'undefined') return false;
                 var compareWith, i;
                 if (typeof selector === 'string') {
                     var el = this[0];
@@ -9257,7 +9693,7 @@
                     }
                     return false;
                 }
-                
+        
             },
             indexOf: function (el) {
                 for (var i = 0; i < this.length; i++) {
@@ -9522,9 +9958,9 @@
         var globalAjaxOptions = {};
         $.ajaxSetup = function (options) {
             if (options.type) options.method = options.type;
-            for (var option in options) {
-                globalAjaxOptions[option]  = options[option];
-            }
+            $.each(options, function (optionName, optionValue) {
+                globalAjaxOptions[optionName]  = optionValue;
+            });
         };
         
         // Ajax
@@ -9547,13 +9983,15 @@
             };
             var callbacks = ['beforeSend', 'error', 'complete', 'success', 'statusCode'];
         
+        
             //For jQuery guys
             if (options.type) options.method = options.type;
         
             // Merge global and defaults
-            for (var globalOption in globalAjaxOptions) {
-                if (callbacks.indexOf(globalOption) < 0) defaults[globalOption] = globalAjaxOptions[globalOption];
-            }
+            $.each(globalAjaxOptions, function (globalOptionName, globalOptionValue) {
+                if (callbacks.indexOf(globalOptionName) < 0) defaults[globalOptionName] = globalOptionValue;
+            });
+        
             // Function to run XHR callbacks and events
             function fireAjaxCallback (eventName, eventData, callbackName) {
                 var a = arguments;
@@ -9567,14 +10005,17 @@
             }
         
             // Merge options and defaults
-            for (var prop in defaults) {
-                if (!(prop in options)) options[prop] = defaults[prop];
-            }
+            $.each(defaults, function (prop, defaultValue) {
+                if (!(prop in options)) options[prop] = defaultValue;
+            });
         
             // Default URL
             if (!options.url) {
                 options.url = window.location.toString();
             }
+            // Parameters Prefix
+            var paramsPrefix = options.url.indexOf('?') >= 0 ? '&' : '?';
+        
             // UC method
             var _method = options.method.toUpperCase();
             // Data to modify GET URL
@@ -9589,21 +10030,18 @@
                     // Should be key=value object
                     stringData = $.serializeObject(options.data);
                 }
-                if (options.url.indexOf('?') >= 0) options.url += '&' + stringData;
-                else options.url += '?' + stringData;
+                options.url += paramsPrefix + stringData;
             }
             // JSONP
             if (options.dataType === 'json' && options.url.indexOf('callback=') >= 0) {
-                
+        
                 var callbackName = 'f7jsonp_' + Date.now() + (_jsonpRequests++);
-                var requestUrl, abortTimeout;
+                var abortTimeout;
                 var callbackSplit = options.url.split('callback=');
+                var requestUrl = callbackSplit[0] + 'callback=' + callbackName;
                 if (callbackSplit[1].indexOf('&') >= 0) {
                     var addVars = callbackSplit[1].split('&').filter(function (el) { return el.indexOf('=') > 0; }).join('&');
-                    requestUrl = callbackSplit[0] + 'callback=' + callbackName + (addVars.length > 0 ? '&' + addVars : '');
-                }
-                else {
-                    requestUrl = callbackSplit[0] + 'callback=' + callbackName;
+                    if (addVars.length > 0) requestUrl += '&' + addVars;
                 }
         
                 // Create script
@@ -9639,12 +10077,7 @@
             // Cache for GET/HEAD requests
             if (_method === 'GET' || _method === 'HEAD') {
                 if (options.cache === false) {
-                    if (options.url.indexOf('?') >= 0) {
-                        options.url += ('&_nocache=' + Date.now());
-                    }
-                    else {
-                        options.url += ('?_nocache=' + Date.now());
-                    }
+                    options.url += (paramsPrefix + '_nocache=' + Date.now());
                 }
             }
         
@@ -9659,7 +10092,7 @@
         
             // Create POST Data
             var postData = null;
-            
+        
             if ((_method === 'POST' || _method === 'PUT') && options.data) {
                 if (options.processData) {
                     var postDataInstances = [ArrayBuffer, Blob, Document, FormData];
@@ -9696,14 +10129,14 @@
                 else {
                     postData = options.data;
                 }
-                    
+        
             }
         
             // Additional headers
             if (options.headers) {
-                for (var header in options.headers) {
-                    xhr.setRequestHeader(header, options.headers[header]);
-                }
+                $.each(options.headers, function (headerName, headerCallback) {
+                    xhr.setRequestHeader(headerName, headerCallback);
+                });
             }
         
             // Check for crossDomain
@@ -9716,23 +10149,23 @@
             }
         
             if (options.xhrFields) {
-                for (var field in options.xhrFields) {
-                    xhr[field] = options.xhrFields[field];
-                }
+                $.each(options.xhrFields, function (fieldName, fieldValue) {
+                    xhr[fieldName] = fieldValue;
+                });
             }
         
             var xhrTimeout;
             // Handle XHR
             xhr.onload = function (e) {
                 if (xhrTimeout) clearTimeout(xhrTimeout);
-                if (xhr.status === 200 || xhr.status === 0) {
-                    var isSuccess, responseData;
+                if ((xhr.status >= 200 && xhr.status < 300) || xhr.status === 0) {
+                    var responseData;
                     if (options.dataType === 'json') {
                         try {
                             responseData = JSON.parse(xhr.responseText);
                             fireAjaxCallback('ajaxSuccess', {xhr: xhr}, 'success', responseData, xhr.status, xhr);
                         }
-                        catch (e) {
+                        catch (err) {
                             fireAjaxCallback('ajaxError', {xhr: xhr, parseerror: true}, 'error', xhr, 'parseerror');
                         }
                     }
@@ -9749,7 +10182,7 @@
                 }
                 fireAjaxCallback('ajaxComplete', {xhr: xhr}, 'complete', xhr, xhr.status);
             };
-            
+        
             xhr.onerror = function (e) {
                 if (xhrTimeout) clearTimeout(xhrTimeout);
                 fireAjaxCallback('ajaxError', {xhr: xhr}, 'error', xhr, xhr.status);
@@ -9793,6 +10226,7 @@
                 createMethod(methods[i]);
             }
         })();
+        
 
         // DOM Library Utilites
         $.parseUrlQuery = function (url) {
@@ -9810,15 +10244,31 @@
             if (Object.prototype.toString.apply(arr) === '[object Array]') return true;
             else return false;
         };
+        $.each = function (obj, callback) {
+            if (typeof obj !== 'object') return;
+            if (!callback) return;
+            var i, prop;
+            if ($.isArray(obj) || obj instanceof Dom7) {
+                // Array
+                for (i = 0; i < obj.length; i++) {
+                    callback(i, obj[i]);
+                }
+            }
+            else {
+                // Object
+                for (prop in obj) {
+                    if (obj.hasOwnProperty(prop)) {
+                        callback(prop, obj[prop]);
+                    }
+                }
+            }
+        };
         $.unique = function (arr) {
             var unique = [];
             for (var i = 0; i < arr.length; i++) {
                 if (unique.indexOf(arr[i]) === -1) unique.push(arr[i]);
             }
             return unique;
-        };
-        $.trim = function (str) {
-            return str.trim();
         };
         $.serializeObject = function (obj) {
             if (typeof obj === 'string') return obj;
@@ -9840,7 +10290,14 @@
         
             return resultArray.join(separator);
         };
-        
+        $.toCamelCase = function (string) {
+            return string.toLowerCase().replace(/-(.)/g, function(match, group1) {
+                return group1.toUpperCase();
+            });
+        };
+        $.dataset = function (el) {
+            return $(el).dataset();
+        };
         $.getTranslate = function (el, axis) {
             var matrix, curTransform, curStyle, transformMatrix;
         
@@ -9908,7 +10365,11 @@
         $.fn = Dom7.prototype;
         
         // Plugins
-        $.fn.scrollTo = function (left, top, duration, easing) {
+        $.fn.scrollTo = function (left, top, duration, easing, callback) {
+            if (arguments.length === 4 && typeof easing === 'function') {
+                callback = easing;
+                easing = undefined;
+            }
             return this.each(function () {
                 var el = this;
                 var currentTop, currentLeft, maxTop, maxLeft, newTop, newLeft, scrollTop, scrollLeft;
@@ -9971,7 +10432,10 @@
                         done = true;
                     }
         
-                    if (done) return;
+                    if (done) {
+                        if (callback) callback();
+                        return;
+                    }
                     if (animateTop) el.scrollTop = scrollTop;
                     if (animateLeft) el.scrollLeft = scrollLeft;
                     $.requestAnimationFrame(render);
@@ -9979,21 +10443,29 @@
                 $.requestAnimationFrame(render);
             });
         };
-        $.fn.scrollTop = function (top, duration, easing) {
+        $.fn.scrollTop = function (top, duration, easing, callback) {
+            if (arguments.length === 3 && typeof easing === 'function') {
+                callback = easing;
+                easing = undefined;
+            }
             var dom = this;
             if (typeof top === 'undefined') {
                 if (dom.length > 0) return dom[0].scrollTop;
                 else return null;
             }
-            return dom.scrollTo(undefined, top, duration, easing);
+            return dom.scrollTo(undefined, top, duration, easing, callback);
         };
-        $.fn.scrollLeft = function (left, duration, easing) {
+        $.fn.scrollLeft = function (left, duration, easing, callback) {
+            if (arguments.length === 3 && typeof easing === 'function') {
+                callback = easing;
+                easing = undefined;
+            }
             var dom = this;
             if (typeof left === 'undefined') {
                 if (dom.length > 0) return dom[0].scrollLeft;
                 else return null;
             }
-            return dom.scrollTo(left, undefined, duration, easing);
+            return dom.scrollTo(left, undefined, duration, easing, callback);
         };
 
         return $;
@@ -10324,28 +10796,50 @@
                 else return function () {return ''; };
             }
             function getCompileVar(name, ctx) {
-                var parents, variable, context;
-                if (name.indexOf('@global') >= 0) {
-                    variable = '(Template7.global && Template7.global.' + (name.split('@global.')[1]) + ')';
+                var variable, parts, levelsUp = 0, initialCtx = ctx;
+                if (name.indexOf('../') === 0) {
+                    levelsUp = name.split('../').length - 1;
+                    var newDepth = ctx.split('_')[1] - levelsUp;
+                    ctx = 'ctx_' + (newDepth >= 1 ? newDepth : 1);
+                    parts = name.split('../')[levelsUp].split('.');
                 }
-                else if (name.indexOf('@') >= 0) {
-                    variable = '(data && data.' + name.replace('@', '') + ')';
+                else if (name.indexOf('@global') === 0) {
+                    ctx = 'Template7.global';
+                    parts = name.split('@global.')[1].split('.');
+                }
+                else if (name.indexOf('@root') === 0) {
+                    ctx = 'ctx_1';
+                    parts = name.split('@root.')[1].split('.');
                 }
                 else {
-                    if (name.indexOf('.') > 0) {
-                        if (name.indexOf('this') === 0) variable = name.replace('this', ctx);
-                        else variable = ctx + '.' + name;
-                    }
-                    else if (name.indexOf('../') === 0) {
-                        var levelUp = name.split('../').length - 1;
-                        var newName = name.split('../')[name.split('../').length - 1];
-                        var newDepth = ctx.split('_')[1] - levelUp;
-                        variable = 'ctx_' + (newDepth >= 1 ? newDepth : 1) + '.' + newName;
+                    parts = name.split('.');
+                }
+                variable = ctx;
+                for (var i = 0; i < parts.length; i++) {
+                    var part = parts[i];
+                    if (part.indexOf('@') === 0) {
+                        if (i > 0) {
+                            variable += '[(data && data.' + part.replace('@', '') + ')]';
+                        }
+                        else {
+                            variable = '(data && data.' + name.replace('@', '') + ')';
+                        }
                     }
                     else {
-                        variable = name === 'this' ? ctx : ctx + '.' + name;
+                        if (isFinite(part)) {
+                            variable += '[' + part + ']';
+                        }
+                        else {
+                            if (part.indexOf('this') === 0) {
+                                variable = part.replace('this', ctx);
+                            }
+                            else {
+                                variable += '.' + part;       
+                            }
+                        }
                     }
                 }
+    
                 return variable;
             }
             function getCompiledArguments(contextArray, ctx) {
@@ -10365,7 +10859,6 @@
                     throw new Error('Template7: Template must be a string');
                 }
                 var blocks = stringToBlocks(template);
-                
                 if (blocks.length === 0) {
                     return function () { return ''; };
                 }
@@ -10395,7 +10888,7 @@
                     if (block.type === 'helper') {
                         if (block.helperName in t.helpers) {
                             compiledArguments = getCompiledArguments(block.contextName, ctx);
-                            resultString += 'r += (Template7.helpers.' + block.helperName + ').call(' + ctx + ', ' + (compiledArguments && (compiledArguments + ',')) +'{hash:' + JSON.stringify(block.hash) + ', data: data || {}, fn: ' + getCompileFn(block, depth+1) + ', inverse: ' + getCompileInverse(block, depth+1) + '});';
+                            resultString += 'r += (Template7.helpers.' + block.helperName + ').call(' + ctx + ', ' + (compiledArguments && (compiledArguments + ', ')) +'{hash:' + JSON.stringify(block.hash) + ', data: data || {}, fn: ' + getCompileFn(block, depth+1) + ', inverse: ' + getCompileInverse(block, depth+1) + ', root: ctx_1});';
                         }
                         else {
                             if (block.contextName.length > 0) {
@@ -10405,9 +10898,9 @@
                                 variable = getCompileVar(block.helperName, ctx);
                                 resultString += 'if (' + variable + ') {';
                                 resultString += 'if (isArray(' + variable + ')) {';
-                                resultString += 'r += (Template7.helpers.each).call(' + ctx + ', ' + variable + ', {hash:' + JSON.stringify(block.hash) + ', data: data || {}, fn: ' + getCompileFn(block, depth+1) + ', inverse: ' + getCompileInverse(block, depth+1) + '});';
+                                resultString += 'r += (Template7.helpers.each).call(' + ctx + ', ' + variable + ', {hash:' + JSON.stringify(block.hash) + ', data: data || {}, fn: ' + getCompileFn(block, depth+1) + ', inverse: ' + getCompileInverse(block, depth+1) + ', root: ctx_1});';
                                 resultString += '}else {';
-                                resultString += 'r += (Template7.helpers.with).call(' + ctx + ', ' + variable + ', {hash:' + JSON.stringify(block.hash) + ', data: data || {}, fn: ' + getCompileFn(block, depth+1) + ', inverse: ' + getCompileInverse(block, depth+1) + '});';
+                                resultString += 'r += (Template7.helpers.with).call(' + ctx + ', ' + variable + ', {hash:' + JSON.stringify(block.hash) + ', data: data || {}, fn: ' + getCompileFn(block, depth+1) + ', inverse: ' + getCompileInverse(block, depth+1) + ', root: ctx_1});';
                                 resultString += '}}';
                             }
                         }
@@ -10474,6 +10967,32 @@
                 'join': function (context, options) {
                     if (isFunction(context)) { context = context.call(this); }
                     return context.join(options.hash.delimiter || options.hash.delimeter);
+                },
+                'js': function (expression, options) {
+                    var func;
+                    if (expression.indexOf('return')>=0) {
+                        func = '(function(){'+expression+'})';
+                    }
+                    else {
+                        func = '(function(){return ('+expression+')})';
+                    }
+                    return eval.call(this, func).call(this);
+                },
+                'js_compare': function (expression, options) {
+                    var func;
+                    if (expression.indexOf('return')>=0) {
+                        func = '(function(){'+expression+'})';
+                    }
+                    else {
+                        func = '(function(){return ('+expression+')})';
+                    }
+                    var condition = eval.call(this, func).call(this);
+                    if (condition) {
+                        return options.fn(this, options.data);
+                    }
+                    else {
+                        return options.inverse(this, options.data);   
+                    }
                 }
             }
         };
@@ -10508,6 +11027,7 @@
     Swiper
     ===========================*/
     window.Swiper = function (container, params) {
+        if (!(this instanceof Swiper)) return new Swiper(container, params);
         var defaults = {
             direction: 'horizontal',
             touchEventsTarget: 'container',
@@ -10522,6 +11042,10 @@
             freeModeMomentumRatio: 1,
             freeModeMomentumBounce: true,
             freeModeMomentumBounceRatio: 1,
+            // Set wrapper width
+            setWrapperSize: false,
+            // Virtual Translate
+            virtualTranslate: false,
             // Effects
             effect: 'slide', // 'slide' or 'fade' or 'cube' or 'coverflow'
             coverflow: {
@@ -10537,6 +11061,11 @@
                 shadowOffset: 20,
                 shadowScale: 0.94
             },
+            fade: {
+                crossFade: false
+            },
+            // Parallax
+            parallax: false,
             // Scrollbar
             scrollbar: null,
             scrollbarHide: true,
@@ -10569,6 +11098,7 @@
             pagination: null,
             paginationClickable: false,
             paginationHide: false,
+            paginationBulletRender: null,
             // Resistance
             resistance: true,
             resistanceRatio: 0.85,
@@ -10577,15 +11107,19 @@
             prevButton: null,
             // Progress
             watchSlidesProgress: false,
-            watchVisibility: false,
+            watchSlidesVisibility: false,
             // Cursor
             grabCursor: false,
             // Clicks
             preventClicks: true,
             preventClicksPropagation: true,
-            releaseFormElements: true,
             slideToClickedSlide: false,
+            // Lazy Loading
+            lazyLoading: false,
+            lazyLoadingInPrevNext: false,
+            lazyLoadingOnTransitionStart: false,
             // Images
+            preloadImages: true,
             updateOnImagesReady: true,
             // loop
             loop: false,
@@ -10615,32 +11149,45 @@
             // Observer
             observer: false,
             observeParents: false,
+            // Accessibility
+            a11y: false,
+            prevSlideMessage: 'Previous slide',
+            nextSlideMessage: 'Next slide',
+            firstSlideMessage: 'This is the first slide',
+            lastSlideMessage: 'This is the last slide',
             // Callbacks
-            runCallbacksOnInit: true
+            runCallbacksOnInit: true,
             /*
             Callbacks:
             onInit: function (swiper)
             onDestroy: function (swiper)
-            onClick: function (swiper, e) 
-            onTap: function (swiper, e) 
-            onDoubleTap: function (swiper, e) 
-            onSliderMove: function (swiper, e) 
-            onSlideChangeStart: function (swiper) 
-            onSlideChangeEnd: function (swiper) 
-            onTransitionStart: function (swiper) 
-            onTransitionEnd: function (swiper) 
-            onImagesReady: function (swiper) 
-            onProgress: function (swiper, progress) 
-            onTouchStart: function (swiper, e) 
-            onTouchMove: function (swiper, e) 
-            onTouchMoveOpposite: function (swiper, e) 
-            onTouchEnd: function (swiper, e) 
-            onReachBeginning: function (swiper) 
-            onReachEnd: function (swiper) 
-            onSetTransition: function (swiper, duration) 
-            onSetTranslate: function (swiper, translate) 
+            onClick: function (swiper, e)
+            onTap: function (swiper, e)
+            onDoubleTap: function (swiper, e)
+            onSliderMove: function (swiper, e)
+            onSlideChangeStart: function (swiper)
+            onSlideChangeEnd: function (swiper)
+            onTransitionStart: function (swiper)
+            onTransitionEnd: function (swiper)
+            onImagesReady: function (swiper)
+            onProgress: function (swiper, progress)
+            onTouchStart: function (swiper, e)
+            onTouchMove: function (swiper, e)
+            onTouchMoveOpposite: function (swiper, e)
+            onTouchEnd: function (swiper, e)
+            onReachBeginning: function (swiper)
+            onReachEnd: function (swiper)
+            onSetTransition: function (swiper, duration)
+            onSetTranslate: function (swiper, translate)
+            onAutoplayStart: function (swiper)
+            onAutoplayStop: function (swiper),
+            onLazyImageLoad: function (swiper, slide, image)
+            onLazyImageReady: function (swiper, slide, image)
             */
+        
         };
+        var initalVirtualTranslate = params && params.virtualTranslate;
+        
         params = params || {};
         for (var def in defaults) {
             if (typeof params[def] === 'undefined') {
@@ -10660,6 +11207,9 @@
         
         // Params
         s.params = params;
+        
+        // Classname
+        s.classNames = [];
         /*=========================
           Dom Library and plugins
           ===========================*/
@@ -10672,6 +11222,8 @@
         }
         if (!$) return;
         
+        // Export it to Swiper instance
+        s.$ = $;
         /*=========================
           Preparation - Define Container, Wrapper and Pagination
           ===========================*/
@@ -10688,24 +11240,31 @@
         s.container[0].swiper = s;
         s.container.data('swiper', s);
         
-        s.container.addClass('swiper-container-' + s.params.direction);
+        s.classNames.push('swiper-container-' + s.params.direction);
         
         if (s.params.freeMode) {
-            s.container.addClass('swiper-container-free-mode');
+            s.classNames.push('swiper-container-free-mode');
         }
-        
+        if (!s.support.flexbox) {
+            s.classNames.push('swiper-container-no-flexbox');
+            s.params.slidesPerColumn = 1;
+        }
+        // Enable slides progress when required
+        if (s.params.parallax || s.params.watchSlidesVisibility) {
+            s.params.watchSlidesProgress = true;
+        }
         // Coverflow / 3D
         if (['cube', 'coverflow'].indexOf(s.params.effect) >= 0) {
             if (s.support.transforms3d) {
                 s.params.watchSlidesProgress = true;
-                s.container.addClass('swiper-container-3d');
+                s.classNames.push('swiper-container-3d');
             }
             else {
                 s.params.effect = 'slide';
             }
         }
         if (s.params.effect !== 'slide') {
-            s.container.addClass('swiper-container-' + s.params.effect);
+            s.classNames.push('swiper-container-' + s.params.effect);
         }
         if (s.params.effect === 'cube') {
             s.params.resistanceRatio = 0;
@@ -10714,10 +11273,18 @@
             s.params.slidesPerGroup = 1;
             s.params.centeredSlides = false;
             s.params.spaceBetween = 0;
+            s.params.virtualTranslate = true;
+            s.params.setWrapperSize = false;
         }
         if (s.params.effect === 'fade') {
+            s.params.slidesPerView = 1;
+            s.params.slidesPerColumn = 1;
+            s.params.slidesPerGroup = 1;
             s.params.watchSlidesProgress = true;
             s.params.spaceBetween = 0;
+            if (typeof initalVirtualTranslate === 'undefined') {
+                s.params.virtualTranslate = true;
+            }
         }
         
         // Grab Cursor
@@ -10743,11 +11310,27 @@
         
         // RTL
         s.rtl = isH() && (s.container[0].dir.toLowerCase() === 'rtl' || s.container.css('direction') === 'rtl');
-        if (s.rtl) s.container.addClass('swiper-container-rtl');
+        if (s.rtl) {
+            s.classNames.push('swiper-container-rtl');
+        }
+        
         // Wrong RTL support
         if (s.rtl) {
             s.wrongRTL = s.wrapper.css('display') === '-webkit-box';
         }
+        
+        // Columns
+        if (s.params.slidesPerColumn > 1) {
+            s.classNames.push('swiper-container-multirow');
+        }
+        
+        // Check for Android
+        if (s.device.android) {
+            s.classNames.push('swiper-container-android');
+        }
+        
+        // Add classes
+        s.container.addClass(s.classNames.join(' '));
         
         // Translate
         s.translate = 0;
@@ -10778,11 +11361,6 @@
             s.params.allowSwipeToNext = s.params.allowSwipeToPrev = true;
         };
         
-        // Columns
-        if (s.params.slidesPerColumn > 1) {
-            s.container.addClass('swiper-container-multirow');
-        }
-        
         
         /*=========================
           Set grab cursor
@@ -10799,19 +11377,12 @@
         s.imagesToLoad = [];
         s.imagesLoaded = 0;
         
-        function loadImage(img) {
-            var image, src;
-            var onReady = function () {
-                if (typeof s === 'undefined' || s === null) return;
-                if (s.imagesLoaded !== undefined) s.imagesLoaded++;
-                if (s.imagesLoaded === s.imagesToLoad.length) {
-                    s.update();
-                    if (s.params.onImagesReady) s.params.onImagesReady(s);
-                }
-            };
-        
-            if (!img.complete) {
-                src = (img.currentSrc || img.getAttribute('src'));
+        s.loadImage = function (imgElement, src, checkForComplete, callback) {
+            var image;
+            function onReady () {
+                if (callback) callback();
+            }
+            if (!imgElement.complete || !checkForComplete) {
                 if (src) {
                     image = new Image();
                     image.onload = onReady;
@@ -10824,12 +11395,19 @@
             } else {//image already loaded...
                 onReady();
             }
-        }
+        };
         s.preloadImages = function () {
             s.imagesToLoad = s.container.find('img');
-        
+            function _onReady() {
+                if (typeof s === 'undefined' || s === null) return;
+                if (s.imagesLoaded !== undefined) s.imagesLoaded++;
+                if (s.imagesLoaded === s.imagesToLoad.length) {
+                    if (s.params.updateOnImagesReady) s.update();
+                    s.emit('onImagesReady', s);
+                }
+            }
             for (var i = 0; i < s.imagesToLoad.length; i++) {
-                loadImage(s.imagesToLoad[i]);
+                s.loadImage(s.imagesToLoad[i], (s.imagesToLoad[i].currentSrc || s.imagesToLoad[i].getAttribute('src')), true, _onReady);
             }
         };
         
@@ -10862,10 +11440,10 @@
         }
         s.startAutoplay = function () {
             if (typeof s.autoplayTimeoutId !== 'undefined') return false;
-            if (!s.params.autoplay) return;
-            if (s.autoplaying) return;
+            if (!s.params.autoplay) return false;
+            if (s.autoplaying) return false;
             s.autoplaying = true;
-            if (s.params.onAutoplayStart) s.params.onAutoplayStart(s);
+            s.emit('onAutoplayStart', s);
             autoplay();
         };
         s.stopAutoplay = function (internal) {
@@ -10873,7 +11451,7 @@
             if (s.autoplayTimeoutId) clearTimeout(s.autoplayTimeoutId);
             s.autoplaying = false;
             s.autoplayTimeoutId = undefined;
-            if (s.params.onAutoplayStop) s.params.onAutoplayStop(s);
+            s.emit('onAutoplayStop', s);
         };
         s.pauseAutoplay = function (speed) {
             if (s.autoplayPaused) return;
@@ -10886,7 +11464,12 @@
             else {
                 s.wrapper.transitionEnd(function () {
                     s.autoplayPaused = false;
-                    autoplay();
+                    if (!s.autoplaying) {
+                        s.stopAutoplay();
+                    }
+                    else {
+                        autoplay();
+                    }
                 });
             }
         };
@@ -10913,7 +11496,7 @@
             s.snapGrid = [];
             s.slidesGrid = [];
             s.slidesSizesGrid = [];
-            
+        
             var spaceBetween = s.params.spaceBetween,
                 slidePosition = 0,
                 i,
@@ -10923,7 +11506,7 @@
                 spaceBetween = parseFloat(spaceBetween.replace('%', '')) / 100 * s.size;
             }
         
-            s.virtualWidth = -spaceBetween;
+            s.virtualSize = -spaceBetween;
             // reset margins
             if (s.rtl) s.slides.css({marginLeft: '', marginTop: ''});
             else s.slides.css({marginRight: '', marginBottom: ''});
@@ -10966,7 +11549,7 @@
                         slidesPerRow = slidesNumberEvenToRows / slidesPerColumn;
                         row = Math.floor(i / slidesPerRow);
                         column = i - row * slidesPerRow;
-                        
+        
                     }
                     slide
                         .css({
@@ -10974,7 +11557,7 @@
                         })
                         .attr('data-swiper-column', column)
                         .attr('data-swiper-row', row);
-                        
+        
                 }
                 if (slide.css('display') === 'none') continue;
                 if (s.params.slidesPerView === 'auto') {
@@ -10991,8 +11574,8 @@
                 }
                 s.slides[i].swiperSlideSize = slideSize;
                 s.slidesSizesGrid.push(slideSize);
-                
-                
+        
+        
                 if (s.params.centeredSlides) {
                     slidePosition = slidePosition + slideSize / 2 + prevSlideSize / 2 + spaceBetween;
                     if (i === 0) slidePosition = slidePosition - s.size / 2 - spaceBetween;
@@ -11006,28 +11589,33 @@
                     slidePosition = slidePosition + slideSize + spaceBetween;
                 }
         
-                s.virtualWidth += slideSize + spaceBetween;
+                s.virtualSize += slideSize + spaceBetween;
         
                 prevSlideSize = slideSize;
         
                 index ++;
             }
-            s.virtualWidth = Math.max(s.virtualWidth, s.size);
+            s.virtualSize = Math.max(s.virtualSize, s.size);
         
             var newSlidesGrid;
         
-            if (s.rtl && s.wrongRTL && (s.params.effect === 'slide' || s.params.effect === 'coverflow')) {
-                s.wrapper.css({width: s.virtualWidth + s.params.spaceBetween + 'px'});
+            if (
+                s.rtl && s.wrongRTL && (s.params.effect === 'slide' || s.params.effect === 'coverflow')) {
+                s.wrapper.css({width: s.virtualSize + s.params.spaceBetween + 'px'});
+            }
+            if (!s.support.flexbox || s.params.setWrapperSize) {
+                if (isH()) s.wrapper.css({width: s.virtualSize + s.params.spaceBetween + 'px'});
+                else s.wrapper.css({height: s.virtualSize + s.params.spaceBetween + 'px'});
             }
         
             if (s.params.slidesPerColumn > 1) {
-                s.virtualWidth = (slideSize + s.params.spaceBetween) * slidesNumberEvenToRows;
-                s.virtualWidth = Math.ceil(s.virtualWidth / s.params.slidesPerColumn) - s.params.spaceBetween;
-                s.wrapper.css({width: s.virtualWidth + s.params.spaceBetween + 'px'});
+                s.virtualSize = (slideSize + s.params.spaceBetween) * slidesNumberEvenToRows;
+                s.virtualSize = Math.ceil(s.virtualSize / s.params.slidesPerColumn) - s.params.spaceBetween;
+                s.wrapper.css({width: s.virtualSize + s.params.spaceBetween + 'px'});
                 if (s.params.centeredSlides) {
                     newSlidesGrid = [];
                     for (i = 0; i < s.snapGrid.length; i++) {
-                        if (s.snapGrid[i] < s.virtualWidth + s.snapGrid[0]) newSlidesGrid.push(s.snapGrid[i]);
+                        if (s.snapGrid[i] < s.virtualSize + s.snapGrid[0]) newSlidesGrid.push(s.snapGrid[i]);
                     }
                     s.snapGrid = newSlidesGrid;
                 }
@@ -11037,17 +11625,17 @@
             if (!s.params.centeredSlides) {
                 newSlidesGrid = [];
                 for (i = 0; i < s.snapGrid.length; i++) {
-                    if (s.snapGrid[i] <= s.virtualWidth - s.size) {
+                    if (s.snapGrid[i] <= s.virtualSize - s.size) {
                         newSlidesGrid.push(s.snapGrid[i]);
                     }
                 }
                 s.snapGrid = newSlidesGrid;
-                if (Math.floor(s.virtualWidth - s.size) > Math.floor(s.snapGrid[s.snapGrid.length - 1])) {
-                    s.snapGrid.push(s.virtualWidth - s.size);
+                if (Math.floor(s.virtualSize - s.size) > Math.floor(s.snapGrid[s.snapGrid.length - 1])) {
+                    s.snapGrid.push(s.virtualSize - s.size);
                 }
             }
             if (s.snapGrid.length === 0) s.snapGrid = [0];
-                
+        
             if (s.params.spaceBetween !== 0) {
                 if (isH()) {
                     if (s.rtl) s.slides.css({marginLeft: spaceBetween + 'px'});
@@ -11087,7 +11675,7 @@
                 var slide = s.slides[i];
                 var slideCenterOffset = (s.params.centeredSlides === true) ? slide.swiperSlideSize / 2 : 0;
                 var slideProgress = (offsetCenter - slide.swiperSlideOffset - slideCenterOffset) / (slide.swiperSlideSize + s.params.spaceBetween);
-                if (s.params.watchVisibility) {
+                if (s.params.watchSlidesVisibility) {
                     var slideBefore = -(offsetCenter - slide.swiperSlideOffset - slideCenterOffset);
                     var slideAfter = slideBefore + s.slidesSizesGrid[i];
                     var isVisible =
@@ -11105,19 +11693,21 @@
             if (typeof translate === 'undefined') {
                 translate = s.translate || 0;
             }
-            s.progress = (translate - s.minTranslate()) / (s.maxTranslate() - s.minTranslate());
-            s.isBeginning = s.isEnd = false;
-            
-            if (s.progress <= 0) {
-                s.isBeginning = true;
-                if (s.params.onReachBeginning) s.params.onReachBeginning(s);
+            var translatesDiff = s.maxTranslate() - s.minTranslate();
+            if (translatesDiff === 0) {
+                s.progress = 0;
+                s.isBeginning = s.isEnd = true;
             }
-            if (s.progress >= 1) {
-                s.isEnd = true;
-                if (s.params.onReachEnd) s.params.onReachEnd(s);
+            else {
+                s.progress = (translate - s.minTranslate()) / (translatesDiff);
+                s.isBeginning = s.progress <= 0;
+                s.isEnd = s.progress >= 1;
             }
+            if (s.isBeginning) s.emit('onReachBeginning', s);
+            if (s.isEnd) s.emit('onReachEnd', s);
+        
             if (s.params.watchSlidesProgress) s.updateSlidesProgress(translate);
-            if (s.params.onProgress) s.params.onProgress(s, s.progress);
+            s.emit('onProgress', s, s.progress);
         };
         s.updateActiveIndex = function () {
             var translate = s.rtl ? s.translate : -s.translate;
@@ -11172,10 +11762,11 @@
                 s.bullets.removeClass(s.params.bulletActiveClass);
                 var bulletIndex;
                 if (s.params.loop) {
-                    bulletIndex = s.activeIndex - s.loopedSlides;
+                    bulletIndex = Math.ceil(s.activeIndex - s.loopedSlides)/s.params.slidesPerGroup;
                     if (bulletIndex > s.slides.length - 1 - s.loopedSlides * 2) {
                         bulletIndex = bulletIndex - (s.slides.length - s.loopedSlides * 2);
                     }
+                    if (bulletIndex > s.bullets.length - 1) bulletIndex = bulletIndex - s.bullets.length;
                 }
                 else {
                     if (typeof s.snapIndex !== 'undefined') {
@@ -11185,18 +11776,37 @@
                         bulletIndex = s.activeIndex || 0;
                     }
                 }
-                s.bullets.eq(bulletIndex).addClass(s.params.bulletActiveClass);
+                if (s.paginationContainer.length > 1) {
+                    s.bullets.each(function () {
+                        if ($(this).index() === bulletIndex) $(this).addClass(s.params.bulletActiveClass);
+                    });
+                }
+                else {
+                    s.bullets.eq(bulletIndex).addClass(s.params.bulletActiveClass);
+                }
             }
         
             // Next/active buttons
             if (!s.params.loop) {
                 if (s.params.prevButton) {
-                    if (s.isBeginning) $(s.params.prevButton).addClass(s.params.buttonDisabledClass);
-                    else $(s.params.prevButton).removeClass(s.params.buttonDisabledClass);
+                    if (s.isBeginning) {
+                        $(s.params.prevButton).addClass(s.params.buttonDisabledClass);
+                        if (s.params.a11y && s.a11y) s.a11y.disable($(s.params.prevButton));
+                    }
+                    else {
+                        $(s.params.prevButton).removeClass(s.params.buttonDisabledClass);
+                        if (s.params.a11y && s.a11y) s.a11y.enable($(s.params.prevButton));
+                    }
                 }
                 if (s.params.nextButton) {
-                    if (s.isEnd) $(s.params.nextButton).addClass(s.params.buttonDisabledClass);
-                    else $(s.params.nextButton).removeClass(s.params.buttonDisabledClass);
+                    if (s.isEnd) {
+                        $(s.params.nextButton).addClass(s.params.buttonDisabledClass);
+                        if (s.params.a11y && s.a11y) s.a11y.disable($(s.params.nextButton));
+                    }
+                    else {
+                        $(s.params.nextButton).removeClass(s.params.buttonDisabledClass);
+                        if (s.params.a11y && s.a11y) s.a11y.enable($(s.params.nextButton));
+                    }
                 }
             }
         };
@@ -11208,9 +11818,14 @@
             if (!s.params.pagination) return;
             if (s.paginationContainer && s.paginationContainer.length > 0) {
                 var bulletsHTML = '';
-                var numberOfBullets = s.params.loop ? s.slides.length - s.loopedSlides * 2 : s.snapGrid.length;
+                var numberOfBullets = s.params.loop ? Math.ceil((s.slides.length - s.loopedSlides * 2) / s.params.slidesPerGroup) : s.snapGrid.length;
                 for (var i = 0; i < numberOfBullets; i++) {
-                    bulletsHTML += '<span class="' + s.params.bulletClass + '"></span>';
+                    if (s.params.paginationBulletRender) {
+                        bulletsHTML += s.params.paginationBulletRender(i, s.params.bulletClass);
+                    }
+                    else {
+                        bulletsHTML += '<span class="' + s.params.bulletClass + '"></span>';
+                    }
                 }
                 s.paginationContainer.html(bulletsHTML);
                 s.bullets = s.paginationContainer.find('.' + s.params.bulletClass);
@@ -11228,19 +11843,29 @@
             if (s.params.scrollbar && s.scrollbar) {
                 s.scrollbar.set();
             }
+            function forceSetTranslate() {
+                newTranslate = Math.min(Math.max(s.translate, s.maxTranslate()), s.minTranslate());
+                s.setWrapperTranslate(newTranslate);
+                s.updateActiveIndex();
+                s.updateClasses();
+            }
             if (updateTranslate) {
                 var translated, newTranslate;
-                if (s.isEnd) {
-                    translated = s.slideTo(s.slides.length - 1, 0, false, true);
+                if (s.params.freeMode) {
+                    forceSetTranslate();
                 }
                 else {
-                    translated = s.slideTo(s.activeIndex, 0, false, true);
+                    if (s.params.slidesPerView === 'auto' && s.isEnd && !s.params.centeredSlides) {
+                        translated = s.slideTo(s.slides.length - 1, 0, false, true);
+                    }
+                    else {
+                        translated = s.slideTo(s.activeIndex, 0, false, true);
+                    }
+                    if (!translated) {
+                        forceSetTranslate();
+                    }
                 }
-                if (!translated) {
-                    newTranslate = Math.min(Math.max(s.translate, s.maxTranslate()), s.minTranslate());
-                    s.setWrapperTranslate(newTranslate);
-                }
-                
+        
             }
         };
         
@@ -11251,17 +11876,26 @@
             s.updateContainerSize();
             s.updateSlidesSize();
             s.updateProgress();
-            s.updateClasses();
-            if (s.params.slidesPerView === 'auto') s.updatePagination();
+            if (s.params.slidesPerView === 'auto' || s.params.freeMode) s.updatePagination();
             if (s.params.scrollbar && s.scrollbar) {
                 s.scrollbar.set();
             }
-            if (s.isEnd) {
-                s.slideTo(s.slides.length - 1, 0, false, true);
+            if (s.params.freeMode) {
+                var newTranslate = Math.min(Math.max(s.translate, s.maxTranslate()), s.minTranslate());
+                s.setWrapperTranslate(newTranslate);
+                s.updateActiveIndex();
+                s.updateClasses();
             }
             else {
-                s.slideTo(s.activeIndex, 0, false, true);
+                s.updateClasses();
+                if (s.params.slidesPerView === 'auto' && s.isEnd && !s.params.centeredSlides) {
+                    s.slideTo(s.slides.length - 1, 0, false, true);
+                }
+                else {
+                    s.slideTo(s.activeIndex, 0, false, true);
+                }
             }
+        
         };
         
         /*=========================
@@ -11272,12 +11906,12 @@
         var desktopEvents = ['mousedown', 'mousemove', 'mouseup'];
         if (window.navigator.pointerEnabled) desktopEvents = ['pointerdown', 'pointermove', 'pointerup'];
         else if (window.navigator.msPointerEnabled) desktopEvents = ['MSPointerDown', 'MSPointerMove', 'MSPointerUp'];
-        
         s.touchEvents = {
             start : s.support.touch || !s.params.simulateTouch  ? 'touchstart' : desktopEvents[0],
             move : s.support.touch || !s.params.simulateTouch ? 'touchmove' : desktopEvents[1],
             end : s.support.touch || !s.params.simulateTouch ? 'touchend' : desktopEvents[2]
         };
+        
         
         // WP8 Touch Events Fix
         if (window.navigator.pointerEnabled || window.navigator.msPointerEnabled) {
@@ -11285,35 +11919,55 @@
         }
         
         // Attach/detach events
-        s.events = function (detach) {
+        s.initEvents = function (detach) {
             var actionDom = detach ? 'off' : 'on';
-            var actionVanilla = detach ? 'removeEventListener' : 'addEventListener';
-            var touchEventsTarget = s.params.touchEventsTarget === 'container' ? s.container : s.wrapper;
-            var target = s.support.touch ? touchEventsTarget : $(document);
+            var action = detach ? 'removeEventListener' : 'addEventListener';
+            var touchEventsTarget = s.params.touchEventsTarget === 'container' ? s.container[0] : s.wrapper[0];
+            var target = s.support.touch ? touchEventsTarget : document;
         
             var moveCapture = s.params.nested ? true : false;
         
-            // Touch events
-            touchEventsTarget[0][actionVanilla](s.touchEvents.start, s.onTouchStart, false);
-            target[0][actionVanilla](s.touchEvents.move, s.onTouchMove, moveCapture);
-            target[0][actionVanilla](s.touchEvents.end, s.onTouchEnd, false);
-            window[actionVanilla]('resize', s.onResize);
+            //Touch Events
+            if (s.browser.ie) {
+                touchEventsTarget[action](s.touchEvents.start, s.onTouchStart, false);
+                target[action](s.touchEvents.move, s.onTouchMove, moveCapture);
+                target[action](s.touchEvents.end, s.onTouchEnd, false);
+            }
+            else {
+                if (s.support.touch) {
+                    touchEventsTarget[action](s.touchEvents.start, s.onTouchStart, false);
+                    touchEventsTarget[action](s.touchEvents.move, s.onTouchMove, moveCapture);
+                    touchEventsTarget[action](s.touchEvents.end, s.onTouchEnd, false);
+                }
+                if (params.simulateTouch && !s.device.ios && !s.device.android) {
+                    touchEventsTarget[action]('mousedown', s.onTouchStart, false);
+                    target[action]('mousemove', s.onTouchMove, moveCapture);
+                    target[action]('mouseup', s.onTouchEnd, false);
+                }
+            }
+            window[action]('resize', s.onResize);
         
             // Next, Prev, Index
-            if (s.params.nextButton) $(s.params.nextButton)[actionDom]('click', s.onClickNext);
-            if (s.params.prevButton) $(s.params.prevButton)[actionDom]('click', s.onClickPrev);
+            if (s.params.nextButton) {
+                $(s.params.nextButton)[actionDom]('click', s.onClickNext);
+                if (s.params.a11y && s.a11y) $(s.params.nextButton)[actionDom]('keydown', s.a11y.onEnterKey);
+            }
+            if (s.params.prevButton) {
+                $(s.params.prevButton)[actionDom]('click', s.onClickPrev);
+                if (s.params.a11y && s.a11y) $(s.params.prevButton)[actionDom]('keydown', s.a11y.onEnterKey);
+            }
             if (s.params.pagination && s.params.paginationClickable) {
                 $(s.paginationContainer)[actionDom]('click', '.' + s.params.bulletClass, s.onClickIndex);
             }
         
             // Prevent Links Clicks
-            if (s.params.preventClicks || s.params.preventClicksPropagation) touchEventsTarget[0][actionVanilla]('click', s.preventClicks, true);
+            if (s.params.preventClicks || s.params.preventClicksPropagation) touchEventsTarget[action]('click', s.preventClicks, true);
         };
         s.attachEvents = function (detach) {
-            s.events();
+            s.initEvents();
         };
         s.detachEvents = function () {
-            s.events(true);
+            s.initEvents(true);
         };
         
         /*=========================
@@ -11410,19 +12064,19 @@
             }
         };
         
-        var isTouched, 
-            isMoved, 
-            touchStartTime, 
-            isScrolling, 
-            currentTranslate, 
-            startTranslate, 
+        var isTouched,
+            isMoved,
+            touchStartTime,
+            isScrolling,
+            currentTranslate,
+            startTranslate,
             allowThresholdMove,
             // Form elements to match
             formElements = 'input, select, textarea, button',
             // Last click time
             lastClickTime = Date.now(), clickTimeout,
             //Velocities
-            velocities = [], 
+            velocities = [],
             allowMomentumBounce;
         
         // Animating Flag
@@ -11438,16 +12092,22 @@
         };
         
         // Touch handlers
+        var isTouchEvent, startMoving;
         s.onTouchStart = function (e) {
             if (e.originalEvent) e = e.originalEvent;
-            if (e.type === 'mousedown' && 'which' in e && e.which === 3) return;
-            if (s.params.noSwiping && findElementInEvent(e, '.' + s.params.noSwipingClass)) return;
+            isTouchEvent = e.type === 'touchstart';
+            if (!isTouchEvent && 'which' in e && e.which === 3) return;
+            if (s.params.noSwiping && findElementInEvent(e, '.' + s.params.noSwipingClass)) {
+                s.allowClick = true;
+                return;
+            }
             if (s.params.swipeHandler) {
                 if (!findElementInEvent(e, s.params.swipeHandler)) return;
             }
             isTouched = true;
             isMoved = false;
             isScrolling = undefined;
+            startMoving = undefined;
             s.touches.startX = s.touches.currentX = e.type === 'touchstart' ? e.targetTouches[0].pageX : e.pageX;
             s.touches.startY = s.touches.currentY = e.type === 'touchstart' ? e.targetTouches[0].pageY : e.pageY;
             touchStartTime = Date.now();
@@ -11458,44 +12118,62 @@
             if (e.type !== 'touchstart') {
                 var preventDefault = true;
                 if ($(e.target).is(formElements)) preventDefault = false;
-                if (document.activeElement && $(document.activeElement).is(formElements)) document.activeElement.blur();
+                if (document.activeElement && $(document.activeElement).is(formElements)) {
+                    document.activeElement.blur();
+                }
                 if (preventDefault) {
                     e.preventDefault();
                 }
             }
-            if (s.params.onTouchStart) s.params.onTouchStart(s, e);
+            s.emit('onTouchStart', s, e);
         };
         
         s.onTouchMove = function (e) {
             if (e.originalEvent) e = e.originalEvent;
+            if (isTouchEvent && e.type === 'mousemove') return;
             if (e.preventedByNestedSwiper) return;
             if (s.params.onlyExternal) {
                 isMoved = true;
                 s.allowClick = false;
                 return;
             }
-            if (s.params.onTouchMove) s.params.onTouchMove(s, e);
-            s.allowClick = false;
+            if (isTouchEvent && document.activeElement) {
+                if (e.target === document.activeElement && $(e.target).is(formElements)) {
+                    isMoved = true;
+                    s.allowClick = false;
+                    return;
+                }
+            }
+        
+            s.emit('onTouchMove', s, e);
+        
             if (e.targetTouches && e.targetTouches.length > 1) return;
-            
+        
             s.touches.currentX = e.type === 'touchmove' ? e.targetTouches[0].pageX : e.pageX;
             s.touches.currentY = e.type === 'touchmove' ? e.targetTouches[0].pageY : e.pageY;
         
             if (typeof isScrolling === 'undefined') {
                 var touchAngle = Math.atan2(Math.abs(s.touches.currentY - s.touches.startY), Math.abs(s.touches.currentX - s.touches.startX)) * 180 / Math.PI;
                 isScrolling = isH() ? touchAngle > s.params.touchAngle : (90 - touchAngle > s.params.touchAngle);
-                // isScrolling = !!(isScrolling || Math.abs(touchesCurrent.y - touchesStart.y) > Math.abs(touchesCurrent.x - touchesStart.x));
             }
-            if (isScrolling && s.params.onTouchMoveOpposite) {
-                s.params.onTouchMoveOpposite(s, e);
+            if (isScrolling) {
+                s.emit('onTouchMoveOpposite', s, e);
+            }
+            if (typeof startMoving === 'undefined' && s.browser.ieTouch) {
+                if (s.touches.currentX !== s.touches.startX || s.touches.currentY !== s.touches.startY) {
+                    startMoving = true;
+                }
             }
             if (!isTouched) return;
             if (isScrolling)  {
                 isTouched = false;
                 return;
             }
-            if (s.params.onSliderMove) s.params.onSliderMove(s, e);
-        
+            if (!startMoving && s.browser.ieTouch) {
+                return;
+            }
+            s.allowClick = false;
+            s.emit('onSliderMove', s, e);
             e.preventDefault();
             if (s.params.touchMoveStopPropagation && !s.params.nested) {
                 e.stopPropagation();
@@ -11505,7 +12183,7 @@
                 if (params.loop) {
                     s.fixLoop();
                 }
-                startTranslate = s.params.effect === 'cube' ? ((s.rtl ? -s.translate: s.translate) || 0) : s.getWrapperTranslate();
+                startTranslate = s.getWrapperTranslate();
                 s.setWrapperTransition(0);
                 if (s.animating) {
                     s.wrapper.trigger('webkitTransitionEnd transitionend oTransitionEnd MSTransitionEnd msTransitionEnd');
@@ -11546,7 +12224,7 @@
                 disableParentSwiper = false;
                 if (s.params.resistance) currentTranslate = s.maxTranslate() + 1 - Math.pow(s.maxTranslate() - startTranslate - diff, s.params.resistanceRatio);
             }
-            
+        
             if (disableParentSwiper) {
                 e.preventedByNestedSwiper = true;
             }
@@ -11558,7 +12236,7 @@
             if (!s.params.allowSwipeToPrev && s.swipeDirection === 'prev' && currentTranslate > startTranslate) {
                 currentTranslate = startTranslate;
             }
-            
+        
             if (!s.params.followFinger) return;
         
             // Threshold
@@ -11602,9 +12280,8 @@
         };
         s.onTouchEnd = function (e) {
             if (e.originalEvent) e = e.originalEvent;
-            if (s.params.onTouchEnd) s.params.onTouchEnd(s, e);
+            s.emit('onTouchEnd', s, e);
             if (!isTouched) return;
-        
             //Return Grab Cursor
             if (s.params.grabCursor && isMoved && isTouched) {
                 s.container[0].style.cursor = 'move';
@@ -11620,7 +12297,7 @@
             // Tap, doubleTap, Click
             if (s.allowClick) {
                 s.updateClickedSlide(e);
-                if (s.params.onTap) s.params.onTap(s, e);
+                s.emit('onTap', s, e);
                 if (timeDiff < 300 && (touchEndTime - lastClickTime) > 300) {
                     if (clickTimeout) clearTimeout(clickTimeout);
                     clickTimeout = setTimeout(function () {
@@ -11628,15 +12305,13 @@
                         if (s.params.paginationHide && s.paginationContainer.length > 0 && !$(e.target).hasClass(s.params.bulletClass)) {
                             s.paginationContainer.toggleClass(s.params.paginationHiddenClass);
                         }
-                        if (s.params.onClick) s.params.onClick(s, e);
+                        s.emit('onClick', s, e);
                     }, 300);
-                    
+        
                 }
                 if (timeDiff < 300 && (touchEndTime - lastClickTime) < 300) {
                     if (clickTimeout) clearTimeout(clickTimeout);
-                    if (s.params.onDoubleTap) {
-                        s.params.onDoubleTap(s, e);
-                    }
+                    s.emit('onDoubleTap', s, e);
                 }
             }
         
@@ -11667,7 +12342,7 @@
                     s.slideTo(s.slides.length - 1);
                     return;
                 }
-                
+        
                 if (s.params.freeModeMomentum) {
                     if (velocities.length > 1) {
                         var lastMoveEvent = velocities.pop(), velocityEvent = velocities.pop();
@@ -11735,24 +12410,24 @@
         
                     if (s.params.freeModeMomentumBounce && doBounce) {
                         s.updateProgress(afterBouncePosition);
-                        s.setWrapperTranslate(newPosition);
                         s.setWrapperTransition(momentumDuration);
+                        s.setWrapperTranslate(newPosition);
                         s.onTransitionStart();
                         s.animating = true;
                         s.wrapper.transitionEnd(function () {
                             if (!allowMomentumBounce) return;
-                            if (s.params.onMomentumBounce) s.params.onMomentumBounce(s);
+                            s.emit('onMomentumBounce', s);
         
-                            s.setWrapperTranslate(afterBouncePosition);
                             s.setWrapperTransition(s.params.speed);
+                            s.setWrapperTranslate(afterBouncePosition);
                             s.wrapper.transitionEnd(function () {
                                 s.onTransitionEnd();
                             });
                         });
                     } else if (s.velocity) {
                         s.updateProgress(newPosition);
-                        s.setWrapperTranslate(newPosition);
                         s.setWrapperTransition(momentumDuration);
+                        s.setWrapperTranslate(newPosition);
                         s.onTransitionStart();
                         if (!s.animating) {
                             s.animating = true;
@@ -11760,11 +12435,11 @@
                                 s.onTransitionEnd();
                             });
                         }
-                            
+        
                     } else {
                         s.updateProgress(newPosition);
                     }
-                    
+        
                     s.updateActiveIndex();
                 }
                 if (!s.params.freeModeMomentum || timeDiff >= s.params.longSwipesMs) {
@@ -11793,7 +12468,7 @@
         
             // Find current slide size
             var ratio = (currentPos - s.slidesGrid[stopIndex]) / groupSize;
-            
+        
             if (timeDiff > s.params.longSwipesMs) {
                 // Long touches
                 if (!s.params.longSwipes) {
@@ -11837,7 +12512,7 @@
             if (slideIndex < 0) slideIndex = 0;
             s.snapIndex = Math.floor(slideIndex / s.params.slidesPerGroup);
             if (s.snapIndex >= s.snapGrid.length) s.snapIndex = s.snapGrid.length - 1;
-            
+        
             var translate = - s.snapGrid[s.snapIndex];
         
             // Stop autoplay
@@ -11863,17 +12538,17 @@
             if (typeof speed === 'undefined') speed = s.params.speed;
             s.previousIndex = s.activeIndex || 0;
             s.activeIndex = slideIndex;
-            
+        
             if (translate === s.translate) {
                 s.updateClasses();
                 return false;
             }
-            if (runCallbacks) s.onTransitionStart();
+            s.onTransitionStart(runCallbacks);
             var translateX = isH() ? translate : 0, translateY = isH() ? 0 : translate;
             if (speed === 0) {
                 s.setWrapperTransition(0);
                 s.setWrapperTranslate(translate);
-                if (runCallbacks) s.onTransitionEnd();
+                s.onTransitionEnd(runCallbacks);
             }
             else {
                 s.setWrapperTransition(speed);
@@ -11881,24 +12556,40 @@
                 if (!s.animating) {
                     s.animating = true;
                     s.wrapper.transitionEnd(function () {
-                        if (runCallbacks) s.onTransitionEnd();
+                        s.onTransitionEnd(runCallbacks);
                     });
                 }
-                    
+        
             }
             s.updateClasses();
             return true;
         };
         
-        s.onTransitionStart = function () {
-            if (s.params.onTransitionStart) s.params.onTransitionStart(s);
-            if (s.params.onSlideChangeStart && s.activeIndex !== s.previousIndex) s.params.onSlideChangeStart(s);
+        s.onTransitionStart = function (runCallbacks) {
+            if (typeof runCallbacks === 'undefined') runCallbacks = true;
+            if (s.lazy) s.lazy.onTransitionStart();
+            if (runCallbacks) {
+                s.emit('onTransitionStart', s);
+                if (s.activeIndex !== s.previousIndex) {
+                    s.emit('onSlideChangeStart', s);
+                }
+            }
         };
-        s.onTransitionEnd = function () {
+        s.onTransitionEnd = function (runCallbacks) {
             s.animating = false;
             s.setWrapperTransition(0);
-            if (s.params.onTransitionEnd) s.params.onTransitionEnd(s);
-            if (s.params.onSlideChangeEnd && s.activeIndex !== s.previousIndex) s.params.onSlideChangeEnd(s);
+            if (typeof runCallbacks === 'undefined') runCallbacks = true;
+            if (s.lazy) s.lazy.onTransitionEnd();
+            if (runCallbacks) {
+                s.emit('onTransitionEnd', s);
+                if (s.activeIndex !== s.previousIndex) {
+                    s.emit('onSlideChangeEnd', s);
+                }
+            }
+            if (s.params.hashnav && s.hashnav) {
+                s.hashnav.setHash();
+            }
+        
         };
         s.slideNext = function (runCallbacks, speed, internal) {
             if (s.params.loop) {
@@ -11933,9 +12624,11 @@
           ===========================*/
         s.setWrapperTransition = function (duration, byController) {
             s.wrapper.transition(duration);
-            if (s.params.onSetTransition) s.params.onSetTransition(s, duration);
             if (s.params.effect !== 'slide' && s.effects[s.params.effect]) {
                 s.effects[s.params.effect].setTransition(duration);
+            }
+            if (s.params.parallax && s.parallax) {
+                s.parallax.setTransition(duration);
             }
             if (s.params.scrollbar && s.scrollbar) {
                 s.scrollbar.setTransition(duration);
@@ -11943,6 +12636,7 @@
             if (s.params.control && s.controller) {
                 s.controller.setTransition(duration, byController);
             }
+            s.emit('onSetTransition', s, duration);
         };
         s.setWrapperTranslate = function (translate, updateActiveIndex, byController) {
             var x = 0, y = 0, z = 0;
@@ -11952,13 +12646,19 @@
             else {
                 y = translate;
             }
-            
-            if (s.support.transforms3d) s.wrapper.transform('translate3d(' + x + 'px, ' + y + 'px, ' + z + 'px)');
-            else s.wrapper.transform('translate(' + x + 'px, ' + y + 'px)');
+            if (!s.params.virtualTranslate) {
+                if (s.support.transforms3d) s.wrapper.transform('translate3d(' + x + 'px, ' + y + 'px, ' + z + 'px)');
+                else s.wrapper.transform('translate(' + x + 'px, ' + y + 'px)');
+            }
+        
             s.translate = isH() ? x : y;
+        
             if (updateActiveIndex) s.updateActiveIndex();
             if (s.params.effect !== 'slide' && s.effects[s.params.effect]) {
                 s.effects[s.params.effect].setTranslate(s.translate);
+            }
+            if (s.params.parallax && s.parallax) {
+                s.parallax.setTranslate(s.translate);
             }
             if (s.params.scrollbar && s.scrollbar) {
                 s.scrollbar.setTranslate(s.translate);
@@ -11966,10 +12666,7 @@
             if (s.params.control && s.controller) {
                 s.controller.setTranslate(s.translate, byController);
             }
-            if (s.params.hashnav && s.hashnav) {
-                s.hashnav.setHash();
-            }
-            if (s.params.onSetTranslate) s.params.onSetTranslate(s, s.translate);
+            s.emit('onSetTranslate', s, s.translate);
         };
         
         s.getTranslate = function (el, axis) {
@@ -11978,6 +12675,10 @@
             // automatic axis detection
             if (typeof axis === 'undefined') {
                 axis = 'x';
+            }
+        
+            if (s.params.virtualTranslate) {
+                return s.rtl ? -s.translate : s.translate;
             }
         
             curStyle = window.getComputedStyle(el, null);
@@ -12034,9 +12735,10 @@
             var observer = new ObserverFunc(function (mutations) {
                 mutations.forEach(function (mutation) {
                     s.onResize();
+                    s.emit('onObserverUpdate', s, mutation);
                 });
             });
-             
+        
             observer.observe(target, {
                 attributes: typeof options.attributes === 'undefined' ? true : options.attributes,
                 childList: typeof options.childList === 'undefined' ? true : options.childList,
@@ -12096,6 +12798,7 @@
         };
         s.destroyLoop = function () {
             s.wrapper.children('.' + s.params.slideClass + '.' + s.params.slideDuplicateClass).remove();
+            s.slides.removeAttr('data-swiper-slide-index');
         };
         s.fixLoop = function () {
             var newIndex;
@@ -12196,19 +12899,27 @@
           ===========================*/
         s.effects = {
             fade: {
+                fadeIndex: null,
                 setTranslate: function () {
                     for (var i = 0; i < s.slides.length; i++) {
                         var slide = s.slides.eq(i);
                         var offset = slide[0].swiperSlideOffset;
-                        var tx = -offset - s.translate;
+                        var tx = -offset;
+                        if (!s.params.virtualTranslate) tx = tx - s.translate;
                         var ty = 0;
                         if (!isH()) {
                             ty = tx;
                             tx = 0;
                         }
+                        var slideOpacity = s.params.fade.crossFade ?
+                                Math.max(1 - Math.abs(slide[0].progress), 0) :
+                                1 + Math.min(Math.max(slide[0].progress, -1), 0);
+                        if (slideOpacity > 0 && slideOpacity < 1) {
+                            s.effects.fade.fadeIndex = i;
+                        }
                         slide
                             .css({
-                                opacity: 1 + Math.min(Math.max(slide[0].progress, -1), 0)
+                                opacity: slideOpacity
                             })
                             .transform('translate3d(' + tx + 'px, ' + ty + 'px, 0px)');
         
@@ -12216,6 +12927,15 @@
                 },
                 setTransition: function (duration) {
                     s.slides.transition(duration);
+                    if (s.params.virtualTranslate && duration !== 0) {
+                        var fadeIndex = s.effects.fade.fadeIndex !== null ? s.effects.fade.fadeIndex : s.activeIndex;
+                        s.slides.eq(fadeIndex).transitionEnd(function () {
+                            var triggerEvents = ['webkitTransitionEnd', 'transitionend', 'oTransitionEnd', 'MSTransitionEnd', 'msTransitionEnd'];
+                            for (var i = 0; i < triggerEvents.length; i++) {
+                                s.wrapper.trigger(triggerEvents[i]);
+                            }
+                        });
+                    }
                 }
             },
             cube: {
@@ -12376,8 +13096,8 @@
                     }
         
                     //Set correct perspective for IE10
-                    if (window.navigator.pointerEnabled || window.navigator.msPointerEnabled) {
-                        var ws = s.wrapper.style;
+                    if (s.browser.ie) {
+                        var ws = s.wrapper[0].style;
                         ws.perspectiveOrigin = center + 'px 50%';
                     }
                 },
@@ -12386,6 +13106,78 @@
                 }
             }
         };
+    
+        /*=========================
+          Images Lazy Loading
+          ===========================*/
+        s.lazy = {
+            initialImageLoaded: false,
+            loadImageInSlide: function (index) {
+                if (typeof index === 'undefined') return;
+                if (s.slides.length === 0) return;
+                
+                var slide = s.slides.eq(index);
+                var img = slide.find('img.swiper-lazy:not(.swiper-lazy-loaded):not(.swiper-lazy-loading)');
+                if (img.length === 0) return;
+        
+                img.each(function () {
+                    var _img = $(this);
+                    _img.addClass('swiper-lazy-loading');
+        
+                    var src = _img.attr('data-src');
+        
+                    s.loadImage(_img[0], src, false, function () {
+                        _img.attr('src', src);
+                        _img.removeAttr('data-src');
+                        _img.addClass('swiper-lazy-loaded').removeClass('swiper-lazy-loading');
+                        slide.find('.swiper-lazy-preloader, .preloader').remove();
+        
+                        s.emit('onLazyImageReady', s, slide[0], _img[0]);
+                    });
+                    
+                    s.emit('onLazyImageLoad', s, slide[0], _img[0]);
+                });
+                    
+            },
+            load: function () {
+                if (s.params.watchSlidesVisibility) {
+                    s.wrapper.children('.' + s.params.slideVisibleClass).each(function () {
+                        s.lazy.loadImageInSlide($(this).index());
+                    });
+                }
+                else {
+                    if (s.params.slidesPerView > 1) {
+                        for (var i = s.activeIndex; i < s.activeIndex + s.params.slidesPerView ; i++) {
+                            if (s.slides[i]) s.lazy.loadImageInSlide(i);
+                        }
+                    }
+                    else {
+                        s.lazy.loadImageInSlide(s.activeIndex);    
+                    }
+                }
+                if (s.params.lazyLoadingInPrevNext) {
+                    var nextSlide = s.wrapper.children('.' + s.params.slideNextClass);
+                    if (nextSlide.length > 0) s.lazy.loadImageInSlide(nextSlide.index());
+        
+                    var prevSlide = s.wrapper.children('.' + s.params.slidePrevClass);
+                    if (prevSlide.length > 0) s.lazy.loadImageInSlide(prevSlide.index());
+                }
+            },
+            onTransitionStart: function () {
+                if (s.params.lazyLoading) {
+                    if (s.params.lazyLoadingOnTransitionStart || (!s.params.lazyLoadingOnTransitionStart && !s.lazy.initialImageLoaded)) {
+                        s.lazy.initialImageLoaded = true;
+                        s.lazy.load();
+                    }
+                }
+            },
+            onTransitionEnd: function () {
+                if (s.params.lazyLoading && !s.params.lazyLoadingOnTransitionStart) {
+                    s.lazy.load();
+                }
+            }
+        };
+        
     
         /*=========================
           Scrollbar
@@ -12404,7 +13196,7 @@
                 sb.drag[0].style.height = '';
                 sb.trackSize = isH() ? sb.track[0].offsetWidth : sb.track[0].offsetHeight;
                 
-                sb.divider = s.size / s.virtualWidth;
+                sb.divider = s.size / s.virtualSize;
                 sb.moveDivider = sb.divider * (sb.trackSize / s.size);
                 sb.dragSize = sb.trackSize * sb.divider;
         
@@ -12454,11 +13246,21 @@
                     }
                 }
                 if (isH()) {
-                    sb.drag.transform('translate3d(' + (newPos) + 'px, 0, 0)');
+                    if (s.support.transforms3d) {
+                        sb.drag.transform('translate3d(' + (newPos) + 'px, 0, 0)');
+                    }
+                    else {
+                        sb.drag.transform('translateX(' + (newPos) + 'px)');   
+                    }
                     sb.drag[0].style.width = newSize + 'px';
                 }
                 else {
-                    sb.drag.transform('translate3d(0px, ' + (newPos) + 'px, 0)');
+                    if (s.support.transforms3d) {
+                        sb.drag.transform('translate3d(0px, ' + (newPos) + 'px, 0)');
+                    }
+                    else {
+                        sb.drag.transform('translateY(' + (newPos) + 'px)');   
+                    }
                     sb.drag[0].style.height = newSize + 'px';
                 }
                 if (s.params.scrollbarHide) {
@@ -12526,6 +13328,228 @@
         };
     
         /*=========================
+          Parallax
+          ===========================*/
+        function setParallaxTransform(el, progress) {
+            el = $(el);
+            var p, pX, pY;
+            
+            p = el.attr('data-swiper-parallax') || '0';
+            pX = el.attr('data-swiper-parallax-x');
+            pY = el.attr('data-swiper-parallax-y');
+            if (pX || pY) {
+                pX = pX || '0';
+                pY = pY || '0';
+            }
+            else {
+                if (isH()) {
+                    pX = p;
+                    pY = '0';
+                }
+                else {
+                    pY = p;
+                    pX = '0';
+                }
+            }
+            if ((pX).indexOf('%') >= 0) {
+                pX = parseInt(pX, 10) * progress + '%';
+            }
+            else {
+                pX = pX * progress + 'px' ;
+            }
+            if ((pY).indexOf('%') >= 0) {
+                pY = parseInt(pY, 10) * progress + '%';
+            }
+            else {
+                pY = pY * progress + 'px' ;
+            }
+            el.transform('translate3d(' + pX + ', ' + pY + ',0px)');
+        }   
+        s.parallax = {
+            setTranslate: function () {
+                s.container.children('[data-swiper-parallax], [data-swiper-parallax-x], [data-swiper-parallax-y]').each(function(){
+                    setParallaxTransform(this, s.progress);
+                    
+                });
+                s.slides.each(function () {
+                    var slide = $(this);
+                    slide.find('[data-swiper-parallax], [data-swiper-parallax-x], [data-swiper-parallax-y]').each(function () {
+                        var progress = Math.min(Math.max(slide[0].progress, -1), 1);
+                        setParallaxTransform(this, progress);
+                    });
+                });
+            },
+            setTransition: function (duration) {
+                if (typeof duration === 'undefined') duration = s.params.speed;
+                s.container.find('[data-swiper-parallax], [data-swiper-parallax-x], [data-swiper-parallax-y]').each(function(){
+                    var el = $(this);
+                    var parallaxDuration = parseInt(el.attr('data-swiper-parallax-duration'), 10) || duration;
+                    if (duration === 0) parallaxDuration = 0;
+                    el.transition(parallaxDuration);
+                });
+            }
+        };
+        
+    
+        /*=========================
+          Plugins API. Collect all and init all plugins
+          ===========================*/
+        s._plugins = [];
+        for (var plugin in s.plugins) {
+            var p = s.plugins[plugin](s, s.params[plugin]);
+            if (p) s._plugins.push(p);
+        }
+        // Method to call all plugins event/method
+        s.callPlugins = function (eventName) {
+            for (var i = 0; i < s._plugins.length; i++) {
+                if (eventName in s._plugins[i]) {
+                    s._plugins[i][eventName](arguments[1], arguments[2], arguments[3], arguments[4], arguments[5]);
+                }
+            }
+        };
+    
+        /*=========================
+          Events/Callbacks/Plugins Emitter
+          ===========================*/
+        function normalizeEventName (eventName) {
+            if (eventName.indexOf('on') !== 0) {
+                if (eventName[0] !== eventName[0].toUpperCase()) {
+                    eventName = 'on' + eventName[0].toUpperCase() + eventName.substring(1);
+                }
+                else {
+                    eventName = 'on' + eventName;
+                }
+            }
+            return eventName;
+        }
+        s.emitterEventListeners = {
+        
+        };
+        s.emit = function (eventName) {
+            // Trigger callbacks
+            if (s.params[eventName]) {
+                s.params[eventName](arguments[1], arguments[2], arguments[3], arguments[4], arguments[5]);
+            }
+            var i;
+            // Trigger events
+            if (s.emitterEventListeners[eventName]) {
+                for (i = 0; i < s.emitterEventListeners[eventName].length; i++) {
+                    s.emitterEventListeners[eventName][i](arguments[1], arguments[2], arguments[3], arguments[4], arguments[5]);
+                }
+            }
+            // Trigger plugins
+            if (s.callPlugins) s.callPlugins(eventName, arguments[1], arguments[2], arguments[3], arguments[4], arguments[5]);
+        };
+        s.on = function (eventName, handler) {
+            eventName = normalizeEventName(eventName);
+            if (!s.emitterEventListeners[eventName]) s.emitterEventListeners[eventName] = [];
+            s.emitterEventListeners[eventName].push(handler);
+            return s;
+        };
+        s.off = function (eventName, handler) {
+            var i;
+            eventName = normalizeEventName(eventName);
+            if (typeof handler === 'undefined') {
+                // Remove all handlers for such event
+                s.emitterEventListeners[eventName] = [];
+                return s;
+            }
+            if (!s.emitterEventListeners[eventName] || s.emitterEventListeners[eventName].length === 0) return;
+            for (i = 0; i < s.emitterEventListeners[eventName].length; i++) {
+                if(s.emitterEventListeners[eventName][i] === handler) s.emitterEventListeners[eventName].splice(i, 1);
+            }
+            return s;
+        };
+        s.once = function (eventName, handler) {
+            eventName = normalizeEventName(eventName);
+            var _handler = function () {
+                handler(arguments[0], arguments[1], arguments[2], arguments[3], arguments[4]);
+                s.off(eventName, _handler);
+            };
+            s.on(eventName, _handler);
+            return s;
+        };
+    
+        // Accessibility tools
+        s.a11y = {
+            makeFocusable: function ($el) {
+                $el[0].tabIndex = '0';
+                return $el;
+            },
+            addRole: function ($el, role) {
+                $el.attr('role', role);
+                return $el;
+            },
+        
+            addLabel: function ($el, label) {
+                $el.attr('aria-label', label);
+                return $el;
+            },
+        
+            disable: function ($el) {
+                $el.attr('aria-disabled', true);
+                return $el;
+            },
+        
+            enable: function ($el) {
+                $el.attr('aria-disabled', false);
+                return $el;
+            },
+        
+            onEnterKey: function (event) {
+                if (event.keyCode !== 13) return;
+                if ($(event.target).is(s.params.nextButton)) {
+                    s.onClickNext(event);
+                    if (s.isEnd) {
+                        s.a11y.notify(s.params.lastSlideMsg);
+                    }
+                    else {
+                        s.a11y.notify(s.params.nextSlideMsg);
+                    }
+                }
+                else if ($(event.target).is(s.params.prevButton)) {
+                    s.onClickPrev(event);
+                    if (s.isBeginning) {
+                        s.a11y.notify(s.params.firstSlideMsg);
+                    }
+                    else {
+                        s.a11y.notify(s.params.prevSlideMsg);
+                    }
+                }
+            },
+        
+            liveRegion: $('<span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>'),
+        
+            notify: function (message) {
+                var notification = s.a11y.liveRegion;
+                if (notification.length === 0) return;
+                notification.html('');
+                notification.html(message);
+            },
+            init: function () {
+                // Setup accessibility
+                if (s.params.nextButton) {
+                    var nextButton = $(s.params.nextButton);
+                    s.a11y.makeFocusable(nextButton);
+                    s.a11y.addRole(nextButton, 'button');
+                    s.a11y.addLabel(nextButton, s.params.nextSlideMsg);
+                }
+                if (s.params.prevButton) {
+                    var prevButton = $(s.params.prevButton);
+                    s.a11y.makeFocusable(prevButton);
+                    s.a11y.addRole(prevButton, 'button');
+                    s.a11y.addLabel(prevButton, s.params.prevSlideMsg);
+                }
+        
+                $(s.container).append(s.a11y.liveRegion);
+            },
+            destroy: function () {
+                if (s.a11y.liveRegion && s.a11y.liveRegion.length > 0) s.a11y.liveRegion.remove();
+            }
+        };
+        
+    
+        /*=========================
           Init/Destroy
           ===========================*/
         s.init = function () {
@@ -12545,12 +13569,16 @@
             }
             else {
                 s.slideTo(s.params.initialSlide, 0, s.params.runCallbacksOnInit);
+                if (s.params.initialSlide === 0) {
+                    if (s.parallax && s.params.parallax) s.parallax.setTranslate();
+                    if (s.lazy && s.params.lazyLoading) s.lazy.load();
+                }
             }
             s.attachEvents();
             if (s.params.observer && s.support.observer) {
                 s.initObservers();
             }
-            if (s.params.updateOnImagesReady) {
+            if (s.params.preloadImages && !s.params.lazyLoading) {
                 s.preloadImages();
             }
             if (s.params.autoplay) {
@@ -12565,25 +13593,83 @@
             if (s.params.hashnav) {
                 if (s.hashnav) s.hashnav.init();
             }
-            if (s.params.onInit) s.params.onInit(s);
+            if (s.params.a11y && s.a11y) s.a11y.init();
+            s.emit('onInit', s);
+        };
+        
+        // Cleanup dynamic styles
+        s.cleanupStyles = function () {
+            // Container
+            s.container.removeClass(s.classNames.join(' ')).removeAttr('style');
+        
+            // Wrapper
+            s.wrapper.removeAttr('style');
+        
+            // Slides
+            if (s.slides && s.slides.length) {
+                s.slides
+                    .removeClass([
+                      s.params.slideVisibleClass,
+                      s.params.slideActiveClass,
+                      s.params.slideNextClass,
+                      s.params.slidePrevClass
+                    ].join(' '))
+                    .removeAttr('style')
+                    .removeAttr('data-swiper-column')
+                    .removeAttr('data-swiper-row');
+            }
+        
+            // Pagination/Bullets
+            if (s.paginationContainer && s.paginationContainer.length) {
+                s.paginationContainer.removeClass(s.params.paginationHiddenClass);
+            }
+            if (s.bullets && s.bullets.length) {
+                s.bullets.removeClass(s.params.bulletActiveClass);
+            }
+        
+            // Buttons
+            if (s.params.prevButton) $(s.params.prevButton).removeClass(s.params.buttonDisabledClass);
+            if (s.params.nextButton) $(s.params.nextButton).removeClass(s.params.buttonDisabledClass);
+        
+            // Scrollbar
+            if (s.params.scrollbar && s.scrollbar) {
+                if (s.scrollbar.track && s.scrollbar.track.length) s.scrollbar.track.removeAttr('style');
+                if (s.scrollbar.drag && s.scrollbar.drag.length) s.scrollbar.drag.removeAttr('style');
+            }
         };
         
         // Destroy
-        s.destroy = function (deleteInstance) {
+        s.destroy = function (deleteInstance, cleanupStyles) {
+            // Detach evebts
             s.detachEvents();
+            // Stop autoplay
+            s.stopAutoplay();
+            // Destroy loop
+            if (s.params.loop) {
+                s.destroyLoop();
+            }
+            // Cleanup styles
+            if (cleanupStyles) {
+                s.cleanupStyles();
+            }
+            // Disconnect observer
             s.disconnectObservers();
+            // Disable keyboard/mousewheel
             if (s.params.keyboardControl) {
                 if (s.disableKeyboardControl) s.disableKeyboardControl();
             }
             if (s.params.mousewheelControl) {
                 if (s.disableMousewheelControl) s.disableMousewheelControl();
             }
-            if (s.params.onDestroy) s.params.onDestroy();
+            // Disable a11y
+            if (s.params.a11y && s.a11y) s.a11y.destroy();
+            // Destroy callback
+            s.emit('onDestroy');
+            // Delete instance
             if (deleteInstance !== false) s = null;
         };
         
         s.init();
-        
         
     
         
@@ -12604,6 +13690,27 @@
             return Object.prototype.toString.apply(arr) === '[object Array]';
         },
         /*==================================================
+        Browser
+        ====================================================*/
+        browser: {
+            ie: window.navigator.pointerEnabled || window.navigator.msPointerEnabled,
+            ieTouch: (window.navigator.msPointerEnabled && window.navigator.msMaxTouchPoints > 1) || (window.navigator.pointerEnabled && window.navigator.maxTouchPoints > 1),
+        },
+        /*==================================================
+        Devices
+        ====================================================*/
+        device: (function () {
+            var ua = navigator.userAgent;
+            var android = ua.match(/(Android);?[\s\/]+([\d.]+)?/);
+            var ipad = ua.match(/(iPad).*OS\s([\d_]+)/);
+            var ipod = ua.match(/(iPod)(.*OS\s([\d_]+))?/);
+            var iphone = !ipad && ua.match(/(iPhone\sOS)\s([\d_]+)/);
+            return {
+                ios: ipad || iphone || ipad,
+                android: android
+            };
+        })(),
+        /*==================================================
         Feature Detection
         ====================================================*/
         support: {
@@ -12618,7 +13725,7 @@
     
             flexbox: (function () {
                 var div = document.createElement('div').style;
-                var styles = ('WebkitBox msFlexbox MsFlexbox WebkitFlex MozBox flex').split(' ');
+                var styles = ('alignItems webkitAlignItems webkitBoxAlign msFlexAlign mozBoxAlign webkitFlexDirection msFlexDirection mozBoxDirection mozBoxOrient webkitBoxDirection webkitBoxOrient').split(' ');
                 for (var i = 0; i < styles.length; i++) {
                     if (styles[i] in div) return true;
                 }
@@ -12628,7 +13735,12 @@
                 return ('MutationObserver' in window || 'WebkitMutationObserver' in window);
             })()
         },
+        /*==================================================
+        Plugins
+        ====================================================*/
+        plugins: {}
     };
+    
 
 })();
 
